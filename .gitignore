@@ -1,0 +1,6 @@
+.godot/
+arte/_tmp/
+captura*.png
+datos/historial.json
+eventos.jsonl
+*.import
