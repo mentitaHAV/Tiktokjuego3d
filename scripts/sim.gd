@@ -23,6 +23,17 @@ const VENTANA_DER := 770.0
 const MAX_TIRADORES := 8
 const TABLA_HP := 30.0
 const TABLAS_BARRERA := 5
+# Almacen del oeste (junto a los huertos), cajas de municion junto a las ventanas y despensa de cocina.
+const ALM_X0 := 8.0
+const ALM_X1 := 70.0
+const ALM_Y0 := 3.6
+const ALM_Y1 := 6.8
+const ALM_ACCESO_X := 40.0
+const ALM_ACCESO_Y := 4.6
+const CAJA_MAX := 90
+const CARGA_MUN := 45
+const CARGA_CRUDO := 12
+const COCINA_MIN := 10
 const ARMAS := {
 	"Pistola": {"cargador": 12, "cadencia": 0.65, "recarga": 1.6, "dano": 20.0},
 	"AK": {"cargador": 30, "cadencia": 0.18, "recarga": 2.5, "dano": 22.0},
@@ -37,6 +48,8 @@ const FRASES := {
 	"cultivar": ["A la huerta.", "Más comida.", "Cosechando."],
 	"talar": ["Necesitamos madera.", "A talar.", "Leña."],
 	"disparar": ["¡Vienen!", "¡A mi ventana!", "Apunten."],
+	"recoger": ["Voy al almacén.", "Traigo cosas.", "A cargar."],
+	"entregar": ["Aquí tienen.", "Reposición.", "Dejo esto."],
 	"luchar": ["¡Dentro!", "¡Se metió uno!", "¡Fuera de aquí!"],
 	"volver": ["¡Adentro!", "¡Corran!", "Me vuelvo."],
 	"pasear": ["...", "Qué silencio.", "Tengo miedo."],
@@ -58,7 +71,10 @@ var puertas: Array = []
 var huertos: Array = []
 var arboles: Array = []
 var tumbas: Array = []
-var stock := {}
+var stock := {}          # cocina y taller: crudo (listo para cocinar), comida cocinada, madera
+var alm := {}            # almacen: suministros (comida SIN cocinar) y municion
+var cajas: Array = []    # una caja de municion junto a cada ventana
+var cocina_ref := {"tipo": "cocina", "ax": COCINA_X + 24.0, "ay": 1.4, "f": 0, "entrante": 0}
 var cola_zombis: Array = []
 var textos: Array = []
 var disparos: Array = []
@@ -97,7 +113,12 @@ func _reiniciar_mundo() -> void:
 	disparos.clear()
 	nombres_gen.clear()
 	registrados.clear()
-	stock = {"crudo": 60, "comida": 45, "madera": 100, "municion": 240}
+	stock = {"crudo": 12, "comida": 20, "madera": 100}
+	alm = {"crudo": 60, "municion": 120}
+	cocina_ref.entrante = 0
+	cajas = []
+	for pv in puestos_ventana():
+		cajas.append({"puesto": pv.puesto, "x": CASA_X1 - 42.0, "y": pv.y, "ax": CASA_X1 - 60.0, "ay": pv.y, "f": pv.f, "mun": 40, "max": CAJA_MAX, "entrante": 0})
 	puertas = []
 	for puesto in puestos_ventana():
 		if puesto.f != 0:
@@ -105,11 +126,11 @@ func _reiniciar_mundo() -> void:
 		barreras.append({"id":puesto.puesto,"x":CASA_X1,"px":CASA_X1-14.0,"y":puesto.y,"f":puesto.f,"hp":150.0,"max":150.0})
 	huertos = []
 	for x in [30.0, 70.0, 110.0]:
-		for profundidad in [0.6, 3.2]:
+		for profundidad in [0.3, 2.3]:
 			huertos.append({"x": x, "y": profundidad, "listo": 0.0, "ocupado": false})
 	arboles = []
-	for x in [25.0, 65.0, 105.0]:
-		arboles.append({"x": x, "y": 6.0, "listo": 0.0, "ocupado": false})
+	for par in [[126.0, 3.4], [138.0, 5.0], [146.0, 6.4]]:
+		arboles.append({"x": par[0], "y": par[1], "listo": 0.0, "ocupado": false})
 	cadaveres.clear()
 	fx.clear()
 	kills = 0
@@ -201,10 +222,9 @@ func _recibir_gg(usuario: String) -> void:
 
 func _suministros(usuario: String, s: Variant) -> void:
 	var n := vivos()
-	stock.crudo += 1 + n / 2
-	stock.comida += 1
+	alm.crudo += 2 + n / 2          # suministros: comida sin cocinar, a la despensa del almacen
+	alm.municion += 10 + n          # municion: al almacen; alguien tiene que repartirla a las cajas
 	stock.madera += 3
-	stock.municion += 10 + n
 	for o in supervivientes:
 		if o.hp > 0.0:
 			o.hp = minf(100.0, o.hp + 15.0)
@@ -216,7 +236,7 @@ func _suministros(usuario: String, s: Variant) -> void:
 			s.cartuchos = ARMAS[s.modelo_arma].cargador
 		s.arma = s.modelo_arma + " +" + str(s.nivel_arma - 1)
 		_texto("+suministros / " + s.arma, s.x, PISO_Y[s.f] + 2.3, Color(1, 0.9, 0.3))
-	aviso("%s reparte suministros" % usuario, 3.0)
+	aviso("%s: +%d suministros y +%d munición al almacén" % [usuario, 2 + n / 2, 10 + n], 3.5)
 
 
 func _recibir_rosa(usuario: String) -> void:
@@ -245,7 +265,7 @@ func _nuevo_superviviente(nombre: String) -> Dictionary:
 		"cama_id": -1, "modelo_arma": modelo, "nivel_arma": 1, "arma": modelo,
 		"cartuchos": ARMAS[modelo].cargador, "recarga": 0.0, "retroceso": 0.0,
 		"tiempo_tiro": 10.0, "tiros": 0, "apunta_x": CASA_X1 + 150.0, "apunta_y": PUERTA_Y, "apunta_z": 1.0, "puesto": -1, "aportes": 0, "kills": 0, "dir": 1, "camina": false, "anim": rng.randf() * 10.0,
-		"dice": "", "dice_ttl": 0.0, "golpe": 0.0,
+		"dice": "", "dice_ttl": 0.0, "golpe": 0.0, "carga": {},
 		"val": rng.randf_range(0.8, 1.3), "tr": rng.randf_range(0.8, 1.3), "glot": rng.randf_range(0.8, 1.3),
 		"camisa": h % 8, "look": (h / 8) % 3,
 	}
@@ -329,6 +349,7 @@ func _cerrar_generacion() -> void:
 
 func _morir(s: Dictionary) -> void:
 	_soltar(s)
+	_perder_carga(s)
 	muertes += 1
 	fx.append({"k": "muerte_s", "x": s.x, "y": s.y, "z": s.vy + 1.0, "dir": s.dir})
 	tumbas.append({"x": s.x, "y": s.y, "nombre": s.nombre})
@@ -385,7 +406,11 @@ func _vida(s: Dictionary, dt: float) -> void:
 	if s.recarga > 0.0:
 		s.recarga = maxf(0.0, s.recarga - dt)
 		if s.recarga <= 0.0:
-			s.cartuchos = ARMAS[s.modelo_arma].cargador
+			var cj = _caja_de(s)
+			if cj != null:
+				var n: int = mini(ARMAS[s.modelo_arma].cargador - s.cartuchos, cj.mun)
+				cj.mun -= n
+				s.cartuchos += n
 	s.flash -= dt
 	s.golpe = maxf(0.0, s.golpe - dt)
 	s.dice_ttl -= dt
@@ -487,7 +512,7 @@ func _decidir(s: Dictionary) -> void:
 	var c: Array = []   # [puntuación, {tipo,x,f,dur,ref}]
 	var fuera := _fuera(s)
 	var amen = _zombi_cerca_casa(360.0)
-	var hay_municion: bool = stock.municion > 0
+	var hay_municion: bool = s.cartuchos > 0
 	var noche := es_noche()
 	var pop := vivos()
 
@@ -501,7 +526,7 @@ func _decidir(s: Dictionary) -> void:
 	if amen != null:
 		if fuera:
 			c.append([96.0, {"tipo": "volver", "x": CASA_X1 - 36.0, "f": 0}])
-		elif hay_municion and s.hp > 20.0:
+		elif s.hp > 20.0:
 			var puesto := _puesto_ventana(s)
 			if not puesto.is_empty():
 				c.append([84.0 * s.val, puesto])
@@ -528,7 +553,7 @@ func _decidir(s: Dictionary) -> void:
 			c.append([(90.0 + urg) * s.tr, {"tipo": "reparar", "x": ox2, "f": d.f, "y": d.y, "dur": 0.8, "ref": d}])
 
 	if not noche:
-		if stock.crudo < 3 * pop + 4:
+		if stock.crudo + alm.crudo < 3 * pop + 4:
 			var h = _libre_recurso(huertos, 200.0)
 			if h != null:
 				c.append([40.0 * s.tr, {"tipo": "cultivar", "x": h.x, "f": 0, "dur": 6.0, "ref": h}])
@@ -536,6 +561,23 @@ func _decidir(s: Dictionary) -> void:
 			var a = _libre_recurso(arboles, 200.0)
 			if a != null:
 				c.append([38.0 * s.tr, {"tipo": "talar", "x": a.x, "f": 0, "dur": 6.0, "ref": a}])
+
+	# logistica: llevar lo que hay en el almacen a donde hace falta
+	var lleva: int = s.carga.get("n", 0)
+	if lleva > 0:
+		var d: Dictionary = s.carga.dest
+		c.append([93.0, {"tipo": "entregar", "x": d.ax, "y": d.ay, "f": d.f, "dur": 1.0}])
+	elif _contar("recoger") + _contar("entregar") < 3 or s.accion == "recoger":
+		var plan = _plan_reparto(s)
+		if plan != null:
+			var u := 0.0
+			if plan.tipo == "caja" and plan.dest.mun < 15:
+				u += 14.0
+			if plan.tipo == "caja" and amen != null:
+				u += 14.0
+			if plan.tipo == "cocina" and stock.comida == 0:
+				u += 14.0
+			c.append([(58.0 + u) * s.tr, {"tipo": "recoger", "x": ALM_ACCESO_X, "y": ALM_ACCESO_Y, "f": 0, "dur": 1.2, "ref": plan.dest}])
 
 	var px := rng.randf_range(CASA_X0 + 30.0, CASA_X1 - 30.0)
 	c.append([8.0, {"tipo": "pasear", "x": px, "f": rng.randi() % PISO_Y.size(), "dur": rng.randf_range(1.5, 4.0)}])
@@ -550,6 +592,56 @@ func _decidir(s: Dictionary) -> void:
 			mp = p
 			mejor = par[1]
 	_comenzar(s, mejor)
+
+
+func _reservado_recoger(dest: Variant, excepto: Variant) -> bool:
+	for o in supervivientes:
+		if not is_same(o, excepto) and o.accion == "recoger" and is_same(o.ref, dest):
+			return true
+	return false
+
+
+func _plan_reparto(s: Dictionary) -> Variant:
+	# Devuelve {"tipo","dest"} con la necesidad mas urgente que nadie esta atendiendo.
+	if s.accion == "recoger" and s.ref != null:
+		var r = s.ref
+		if r.get("tipo", "caja") == "cocina":
+			if alm.crudo > 0 and stock.crudo + r.entrante < COCINA_MIN + 6:
+				return {"tipo": "cocina", "dest": r}
+		elif alm.municion > 0 and r.mun + r.entrante < r.max * 0.85:
+			return {"tipo": "caja", "dest": r}
+	var peor = null
+	var pm := 1e9
+	for cj in cajas:
+		var tot: int = cj.mun + cj.entrante
+		if tot < cj.max * 0.6 and tot < pm and not _reservado_recoger(cj, s):
+			pm = tot
+			peor = cj
+	if peor != null and alm.municion > 0:
+		return {"tipo": "caja", "dest": peor}
+	if stock.crudo + cocina_ref.entrante < COCINA_MIN and alm.crudo > 0 and not _reservado_recoger(cocina_ref, s):
+		return {"tipo": "cocina", "dest": cocina_ref}
+	return null
+
+
+func _perder_carga(s: Dictionary) -> void:
+	var n: int = s.carga.get("n", 0)
+	if n > 0:
+		s.carga.dest.entrante = maxi(0, s.carga.dest.entrante - n)
+	s.carga = {}
+
+
+func _caja_de(s: Dictionary) -> Variant:
+	if s.accion == "disparar" and s.llego and s.puesto >= 0 and s.puesto < cajas.size():
+		return cajas[s.puesto]
+	return null
+
+
+func municion_total() -> int:
+	var n: int = alm.municion
+	for cj in cajas:
+		n += cj.mun
+	return n
 
 
 func _ocupantes_ventana(piso: int) -> int:
@@ -586,8 +678,12 @@ func puestos_ventana() -> Array:
 func _puesto_ventana(s: Dictionary) -> Dictionary:
 	var puestos := puestos_ventana()
 	if s.accion == "disparar" and s.puesto >= 0 and s.puesto < MAX_TIRADORES:
-		return puestos[s.puesto]
+		if s.cartuchos > 0 or cajas[s.puesto].mun > 0:
+			return puestos[s.puesto]
+		return {}
 	for puesto in puestos:
+		if s.cartuchos <= 0 and cajas[puesto.puesto].mun <= 0:
+			continue
 		var ocupado := false
 		for o in supervivientes:
 			if o.id != s.id and o.accion == "disparar" and o.puesto == puesto.puesto:
@@ -645,6 +741,7 @@ func _profundidad_puesto(accion: String, ref: Variant) -> float:
 		"cultivar", "talar": return float(ref.y) if ref != null else PUERTA_Y
 		"disparar": return 2.4
 		"reparar": return PUERTA_Y
+		"recoger": return ALM_ACCESO_Y
 	return PASILLO_Y
 
 
@@ -723,7 +820,7 @@ func _avanzar_escalera(c: Dictionary, dt: float) -> void:
 func _actuar(s: Dictionary, dt: float) -> void:
 	s.llego = _mover(s, s.ox, s.of, dt)
 	match s.accion:
-		"comer", "cocinar", "construir", "reparar", "cultivar", "talar", "pasear":
+		"comer", "cocinar", "construir", "reparar", "cultivar", "talar", "pasear", "recoger", "entregar":
 			if s.llego:
 				s.trab += dt
 				if s.trab >= s.dur:
@@ -747,6 +844,35 @@ func _terminar(s: Dictionary) -> void:
 				stock.crudo -= 1
 				stock.comida += 2
 				_texto("+2 comida", s.x, PISO_Y[s.f] + 2.1, Color(1, 0.7, 0.3))
+		"recoger":
+			var d = s.ref
+			if d != null:
+				if d.get("tipo", "caja") == "cocina":
+					var n: int = mini(CARGA_CRUDO, alm.crudo)
+					if n > 0:
+						alm.crudo -= n
+						d.entrante += n
+						s.carga = {"dest": d, "n": n, "kind": "crudo"}
+						_texto("+%d suministros" % n, s.x, PISO_Y[s.f] + 2.1, Color(0.9, 0.8, 0.5))
+				else:
+					var n: int = mini(CARGA_MUN, mini(alm.municion, d.max - d.mun - d.entrante))
+					if n > 0:
+						alm.municion -= n
+						d.entrante += n
+						s.carga = {"dest": d, "n": n, "kind": "municion"}
+						_texto("+%d munición" % n, s.x, PISO_Y[s.f] + 2.1, Color(0.9, 0.8, 0.5))
+		"entregar":
+			var n: int = s.carga.get("n", 0)
+			if n > 0:
+				var d: Dictionary = s.carga.dest
+				d.entrante = maxi(0, d.entrante - n)
+				if s.carga.kind == "crudo":
+					stock.crudo += n
+					_texto("+%d a cocina" % n, s.x, PISO_Y[s.f] + 2.1, Color(0.9, 0.8, 0.5))
+				else:
+					d.mun = mini(d.max, d.mun + n)
+					_texto("+%d a la caja" % n, s.x, PISO_Y[s.f] + 2.1, Color(0.7, 0.9, 0.5))
+				s.carga = {}
 		"reparar":
 			var r = s.ref
 			if r != null and stock.madera >= 1:
@@ -756,8 +882,8 @@ func _terminar(s: Dictionary) -> void:
 		"cultivar":
 			if s.ref != null:
 				s.ref.listo = t + 70.0
-				stock.crudo += 2
-				_texto("+2 comida", s.x, 2.1, Color(0.5, 1, 0.5))
+				alm.crudo += 2
+				_texto("+2 suministros", s.x, 2.1, Color(0.5, 1, 0.5))
 		"talar":
 			if s.ref != null:
 				s.ref.listo = t + 70.0
@@ -796,12 +922,12 @@ func _reflejo(s: Dictionary) -> void:
 			objetivo = z
 	if objetivo == null:
 		return
-	if stock.municion > 0:
+	var caja = _caja_de(s)
+	if s.cartuchos <= 0 and caja != null and caja.mun > 0:
+		s.recarga = ARMAS[s.modelo_arma].recarga
+		return
+	if s.cartuchos > 0:
 		var arma: Dictionary = ARMAS[s.modelo_arma]
-		if s.cartuchos <= 0:
-			s.recarga = arma.recarga
-			return
-		stock.municion -= 1
 		s.cartuchos -= 1
 		s.cd_ataque = arma.cadencia / (1.0 + (s.nivel_arma - 1) * 0.12)
 		s.flash = 0.065

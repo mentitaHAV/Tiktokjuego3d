@@ -87,7 +87,7 @@ func _demo_hogar() -> void:
 	sim.config.ambiente = false
 	sim.stock.madera = 0
 	sim.stock.comida = 0
-	sim.stock.crudo = 40
+	sim.stock.crudo = 4
 	for recurso in sim.arboles + sim.huertos:
 		recurso.listo = 600.0
 	for n in ["Ana", "Luis", "Marta", "Pepe", "Sofi", "Rafa"]:
@@ -326,6 +326,8 @@ func _draw() -> void:
 		_capa_casa(t_atras)
 	_luces_casa(osc)
 	_malla_huerto(false)
+	_almacen()
+	_cajas_ventana()
 	bocas_arma.clear()
 	_entidades()
 	_malla_huerto(true)
@@ -482,17 +484,32 @@ func _efectos() -> void:
 
 func _hud() -> void:
 	var hh := int(sim.hora() * 24.0 + 6.0) % 24
-	draw_rect(Rect2(0, 0, 640, 22), Color(0, 0, 0, 0.5))
+	draw_rect(Rect2(0, 0, 640, 42), Color(0, 0, 0, 0.6))
 	var linea := "GEN %d  DIA %d  %02d:00   HUMANOS %d/50   ZOMBIS %d" % [sim.gen, sim.dia(), hh, sim.vivos(), sim.zombis.size()]
-	_texto(linea, 320, 9, Color("f0e0d8"), 7, 600)
-	var r := "COMIDA %d(+%d)   MADERA %d   MUNICION %d" % [sim.stock.comida, sim.stock.crudo, sim.stock.madera, sim.stock.municion]
-	_texto(r + "   VENTANAS %d/8" % sim._contar("disparar"), 320, 19, Color("ffd9a0"), 6, 600)
+	_texto(linea, 320, 8, Color("f0e0d8"), 7, 600)
+	# Indicadores del almacen: suministros (comida sin cocinar) y municion, con lo que hay en cajas y cocina.
+	var en_cajas := 0
+	for cj in sim.cajas:
+		en_cajas += cj.mun
+	var max_cajas: int = sim.cajas.size() * Sim.CAJA_MAX
+	_indicador(8.0, 21.0, "ALMACEN SUMINISTROS", sim.alm.crudo, 120, Color("d9b45a"), "cocina %d" % sim.stock.crudo)
+	_indicador(168.0, 21.0, "ALMACEN MUNICION", sim.alm.municion, 300, Color("9fc060"), "cajas %d/%d" % [en_cajas, max_cajas])
+	var r := "COMIDA LISTA %d   MADERA %d   VENTANAS %d/8" % [sim.stock.comida, sim.stock.madera, sim._contar("disparar")]
+	_texto(r, 495, 29, Color("ffd9a0"), 6, 280)
+	var vacias := 0
+	for cj in sim.cajas:
+		if cj.mun <= 0:
+			vacias += 1
+	if sim.alm.municion <= 0 and en_cajas < 60:
+		_texto("¡SIN MUNICION!", 320, 50, Color("ff5040", 0.6 + 0.4 * sin(t_real * 6.0)), 8, 200)
+	elif vacias > 0:
+		_texto("%d cajas vacias" % vacias, 320, 50, Color("ff9a60", 0.7 + 0.3 * sin(t_real * 5.0)), 6, 200)
 	if sim.historial.size() > 0:
 		var mejor := 0.0
 		for h in sim.historial:
 			mejor = maxf(mejor, float(h.dias))
 		_texto("RECORD %.1fd" % mejor, 585, 9, Color("c0a0a0"), 6, 60)
-	var y := 30.0
+	var y := 62.0
 	for a in sim.avisos:
 		_texto(a.txt, 320, y, Color(1, 0.55, 0.45, clampf(a.ttl, 0.0, 1.0)), 8, 280)
 		y += 10.0
@@ -500,6 +517,76 @@ func _hud() -> void:
 		_texto("x%d" % vel_juego, 14, 350, Color.WHITE, 6, 24)
 	if pausa:
 		_texto("PAUSA", 320, 180, Color.WHITE, 10, 80)
+
+
+func _indicador(x: float, y: float, titulo: String, valor: int, tope: int, col: Color, extra: String) -> void:
+	_rc(x, y + 2, 150, 4, Color(0.2, 0.2, 0.2, 0.9))
+	var f := clampf(float(valor) / float(tope), 0.0, 1.0)
+	var c := col if f > 0.2 else Color("e05a40")
+	_rc(x, y + 2, 150.0 * f, 4, c)
+	_texto("%s %d" % [titulo, valor], x + 75, y - 4, Color("f0e6d0"), 5, 190)
+	_texto(extra, x + 75, y + 13, Color("b8a890"), 5, 190)
+
+
+func _prisma(x0: float, x1: float, y0: float, y1: float, z0: float, z1: float, col: Color) -> void:
+	# Caja con tres caras visibles: techo, frente (profundidad menor) y costado (+x).
+	var arriba := col.lightened(0.18)
+	var frente := col
+	var lado := col.darkened(0.3)
+	draw_colored_polygon(PackedVector2Array([proy(x0, y0, z1), proy(x1, y0, z1), proy(x1, y1, z1), proy(x0, y1, z1)]), arriba)
+	draw_colored_polygon(PackedVector2Array([proy(x0, y0, z0), proy(x1, y0, z0), proy(x1, y0, z1), proy(x0, y0, z1)]), frente)
+	draw_colored_polygon(PackedVector2Array([proy(x1, y0, z0), proy(x1, y1, z0), proy(x1, y1, z1), proy(x1, y0, z1)]), lado)
+
+
+func _almacen() -> void:
+	# Cobertizo abierto por delante, entre los huertos y la casa; al fondo se apilan las reservas.
+	var X0 := Sim.ALM_X0
+	var X1 := Sim.ALM_X1
+	var Y0 := Sim.ALM_Y0
+	var Y1 := Sim.ALM_Y1
+	var H := 3.2
+	var suelo := Color("3a2f27")
+	draw_colored_polygon(PackedVector2Array([proy(X0, Y0, 0), proy(X1, Y0, 0), proy(X1, Y1, 0), proy(X0, Y1, 0)]), suelo)
+	draw_colored_polygon(PackedVector2Array([proy(X0, Y1, 0), proy(X1, Y1, 0), proy(X1, Y1, H), proy(X0, Y1, H)]), Color("5a4a3a"))
+	draw_colored_polygon(PackedVector2Array([proy(X0, Y0, 0), proy(X0, Y1, 0), proy(X0, Y1, H), proy(X0, Y0, H)]), Color("463a2e"))
+	draw_colored_polygon(PackedVector2Array([proy(X1, Y0, 0), proy(X1, Y1, 0), proy(X1, Y1, H), proy(X1, Y0, H)]), Color("3a3028"))
+	# tablones de la pared del fondo
+	for i in range(1, 8):
+		var zz := H * float(i) / 8.0
+		draw_line(proy(X0, Y1, zz), proy(X1, Y1, zz), Color(0, 0, 0, 0.25), 1)
+	# techo: solo un alero al frente para que se vea el interior
+	_prisma(X0 - 4, X1 + 4, Y0 - 0.2, Y0 + 0.2, H, H + 0.25, Color("6b4a32"))
+	# reservas de municion (izquierda) y suministros (derecha), tantas cajas como haya
+	var n_mun := clampi(ceili(float(sim.alm.municion) / 30.0), 0, 12)
+	for i in range(n_mun):
+		_caja_reserva(X0 + 4.0 + (i % 2) * 11.0, Y1, (i / 2) % 3, i / 6, Color("5c6b36"), Color("e0c04a"))
+	var n_com := clampi(ceili(float(sim.alm.crudo) / 8.0), 0, 12)
+	for i in range(n_com):
+		_caja_reserva(X1 - 26.0 + (i % 2) * 11.0, Y1, (i / 2) % 3, i / 6, Color("a07a44"), Color("d8b0a0"))
+	var cartel := proy(X0 + 14.0, Y0, H + 0.6)
+	_texto("ALMACEN", cartel.x, cartel.y - 6, Color("e8d8b0"), 7, 80)
+
+
+func _caja_reserva(cx: float, y1: float, fila: int, piso: int, col: Color, marca: Color) -> void:
+	var yy := y1 - 1.0 - fila * 0.85
+	_prisma(cx, cx + 9.0, yy, yy + 0.75, piso * 0.55, piso * 0.55 + 0.5, col)
+	var p := proy(cx + 4.0, yy, piso * 0.55 + 0.25)
+	_rc(p.x - 1, p.y, 2, 1, marca)
+
+
+func _cajas_ventana() -> void:
+	# Una caja de municion al lado de cada ventana; el nivel se ve en la barrita encima.
+	for cj in sim.cajas:
+		var x: float = cj.x
+		var y: float = cj.y
+		var z: float = Sim.PISO_Y[cj.f]
+		_prisma(x, x + 12.0, y - 0.35, y + 0.35, z, z + 0.45, Color("5c6b36"))
+		var p := proy(x + 6.0, y - 0.35, z + 0.22)
+		_rc(p.x - 2, p.y, 4, 1, Color("e0c04a"))
+		var barra := proy(x + 6.0, y - 0.35, z + 0.75)
+		var f := clampf(float(cj.mun) / float(cj.max), 0.0, 1.0)
+		_rc(barra.x - 6, barra.y, 12, 2, Color(0, 0, 0, 0.75))
+		_rc(barra.x - 6, barra.y, 12.0 * f, 2, Color("9fc060") if f > 0.25 else Color("e05a40"))
 
 
 # Cadenas organicas continuas, cuantizadas al pixel al dibujar.
@@ -618,7 +705,9 @@ func _demo_50(ensayo_armas: bool = false) -> void:
 		s.y = Sim.PASILLO_Y
 		s.energia = 95.0
 		s.hambre = 10.0
-	sim.stock.municion = 5000 if ensayo_armas else 500
+	for cj in sim.cajas:
+		cj.mun = 90
+	sim.alm.municion = 5000 if ensayo_armas else 500
 	# Los ocho puestos empiezan ocupados para mostrar su distribucion en la demo.
 	var puestos := sim.puestos_ventana()
 	for i in range(8):

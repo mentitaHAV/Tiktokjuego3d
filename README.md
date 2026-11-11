@@ -54,6 +54,22 @@ usuario de TikTok en `usuario`, conservando su nombre para el personaje.
   Cada ventana se repara desde dentro, en su posicion y planta. No hay defensas de madera en el patio.
   Los ataques pueden destruir las tablas mientras los humanos las reconstruyen.
 
+## Almacen y logistica
+
+- Las donaciones de suministros (GG repetidos y otros regalos) ya **no** reparten nada por arte de magia:
+  llegan al **almacen**, un cobertizo abierto al oeste, junto a los huertos. Tiene dos reservas:
+  **suministros** (comida *sin cocinar*) y **municion**. Las cajas apiladas dentro reflejan lo que queda.
+- **Indicador arriba** de la pantalla: dos barras (suministros y municion del almacen), con las
+  existencias de la cocina y el total de las cajas de ventana. Avisa con "cajas vacias" o "SIN MUNICION".
+- **Cajas de municion** junto a cada una de las 8 ventanas. El tirador recarga desde la caja de
+  *su* ventana; si el cargador y la caja estan vacios, deja el puesto. Nadie dispara con municion del aire.
+- **Alguien tiene que llevarla**: los humanos libres cogen municion del almacen (hasta 45 por viaje) y la
+  llevan a la caja mas vacia, subiendo escaleras si hace falta. Como mucho tres a la vez, y nadie
+  se disputa la misma caja.
+- **Suministros**: se llevan del almacen a la cocina (12 por viaje) y *despues* alguien tiene que
+  cocinarlos para que se conviertan en comida. La cosecha del huerto tambien va al almacen.
+- La madera sigue siendo global (taller). Regresion: `tests/almacen.gd`.
+
 ## Ejecutar
 
 Se ha probado con **Godot 4.6.3**, aunque `project.godot` conserva la etiqueta 4.7.

@@ -8,9 +8,9 @@ func _init() -> void:
 		sim.aplicar_regalo(n, "GG", 1)
 	print("vivos tras GG: ", sim.vivos())
 	# segunda rosa de Ana -> suministros
-	var antes: int = sim.stock.municion
+	var antes: int = sim.alm.municion
 	sim.aplicar_regalo("Ana", "GG", 1)
-	print("municion antes/despues: ", antes, " / ", sim.stock.municion)
+	print("municion antes/despues: ", antes, " / ", sim.alm.municion)
 	var dt := 0.1
 	var seg := 0.0
 	var siguiente_print := 0.0
@@ -33,7 +33,7 @@ func _init() -> void:
 			for s in sim.supervivientes:
 				acc[s.accion] = acc.get(s.accion, 0) + 1
 			print("t=%4d gen=%d vivos=%d zombis=%2d kills=%2d stock=%s barr=%d ventana0=%d/%d acc=%s" % [
-				int(seg), sim.gen, sim.vivos(), sim.zombis.size(), sim.kills, str(sim.stock),
+				int(seg), sim.gen, sim.vivos(), sim.zombis.size(), sim.kills, str(sim.stock) + str(sim.alm) + " cajas=" + str(sim.municion_total() - sim.alm.municion),
 				sim.barreras.size(), int(sim.barreras[0].hp), int(sim.barreras[0].max), str(acc)])
 	print("historial: ", JSON.stringify(sim.historial))
 	quit()

@@ -20,9 +20,9 @@ func identidades() -> void:
 	comprobar(sim.vivos() == 1, "Dos GG crean dos copias del usuario")
 	var juan: Dictionary = sim.supervivientes[0]
 	comprobar(juan.nombre == "Juanito" and juan.aportes == 1 and juan.nivel_arma == 2, "GG repetido no entrega equipo/arma")
-	var municion: int = sim.stock.municion
+	var municion: int = sim.alm.municion
 	sim.aplicar_regalo(" JUANITO ", "gg")
-	comprobar(sim.vivos() == 1 and sim.stock.municion > municion and juan.nivel_arma == 3, "Identidad no normalizada")
+	comprobar(sim.vivos() == 1 and sim.alm.municion > municion and juan.nivel_arma == 3, "Identidad no normalizada")
 	sim.aplicar_regalo("OtraPersona", "Rose", 2)
 	comprobar(sim.vivos() == 1 and sim.cola_zombis.size() == 12, "Las rosas no invocan la cantidad de oleadas")
 	sim._procesar_cola()
