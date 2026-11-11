@@ -1,24 +1,33 @@
 class_name Sim
 extends RefCounted
 ## Simulación pura (sin dibujo) de la casa de sobrevivientes.
-## Vista lateral: 2 plantas, patio a los lados. Todo en coordenadas virtuales 480x270.
+## Cinco plantas, 50 residentes; huerto seguro al oeste, invasion por el este.
 
-const ANCHO := 640.0                       # lienzo en px; 25 px = 1 metro
-const PISO_Y := [0.0, 3.2]                 # altura de cada piso en metros
-const CASA_X0 := 20.0
-const CASA_X1 := 320.0                     # pared derecha: la puerta da al patio
-const ESCALERA_X := 225.0
-const MAX_VIVOS := 12
+const ANCHO := 1260.0                       # lienzo en px; 25 px = 1 metro
+const PISO_Y := [0.0, 4.8, 9.6, 14.4, 19.2]                 # altura de cada piso en metros
+const CASA_X0 := 150.0
+const CASA_X1 := 790.0                     # pared derecha: la puerta da al patio
+const ESCALERA_X := 490.0
+const MAX_VIVOS := 50
 const DIA_LEN := 120.0
 const VEL_S := 33.0
-const HUECOS_DER := [520.0, 550.0, 580.0]  # barricadas en el patio (de dentro hacia fuera)
 const CARRILES := [-0.8, 0.8, 2.4, 4.0]    # profundidad del patio en metros
-const CAMAS := [56.0, 106.0, 156.0, 284.0]
-const COCINA_X := 55.0
-const MESA_X := 135.0
-const BANCO_X := 290.0
-const VENTANA_DER := 300.0
-const COSTE_BARRERA := 6
+const CAMAS := [180.0, 210.0, 240.0, 270.0, 300.0, 330.0, 360.0, 390.0, 420.0, 450.0, 560.0, 590.0, 620.0, 650.0, 680.0, 710.0, 740.0]
+const ESCALERA_Y := 2.8
+const PASILLO_Y := 0.6
+const PUERTA_Y := 0.8
+const COCINA_X := 235.0
+const MESA_X := 365.0
+const BANCO_X := 640.0
+const VENTANA_DER := 770.0
+const MAX_TIRADORES := 8
+const TABLA_HP := 30.0
+const TABLAS_BARRERA := 5
+const ARMAS := {
+	"Pistola": {"cargador": 12, "cadencia": 0.65, "recarga": 1.6, "dano": 20.0},
+	"AK": {"cargador": 30, "cadencia": 0.18, "recarga": 2.5, "dano": 22.0},
+	"M4": {"cargador": 30, "cadencia": 0.14, "recarga": 2.1, "dano": 18.0},
+}
 const FRASES := {
 	"comer": ["Qué hambre...", "A comer.", "Ñam."],
 	"dormir": ["Me caigo de sueño.", "A la cama.", "Zzz..."],
@@ -36,7 +45,9 @@ const FRASES := {
 }
 
 var rng := RandomNumberGenerator.new()
-var config := {"regalos": {"Rose": "persona", "GG": "zombis"}, "ambiente": true}
+var navegacion := Navegacion.new()
+var next_zombie := 1
+var config := {"regalos": {"Rose": "zombis", "GG": "persona"}, "ambiente": false}
 
 var gen := 1
 var t := 0.0
@@ -61,6 +72,7 @@ var muertes := 0
 var pico := 0
 var tuvo_gente := false
 var nombres_gen: Array = []
+var registrados := {} # Una identidad por generacion, incluso tras morir.
 var fin_timer := -1.0
 var sig_ambiente := 70.0
 var next_id := 1
@@ -84,14 +96,20 @@ func _reiniciar_mundo() -> void:
 	textos.clear()
 	disparos.clear()
 	nombres_gen.clear()
-	stock = {"crudo": 6, "comida": 4, "madera": 10, "municion": 30}
-	puertas = [{"x": CASA_X1, "hp": 250.0, "max": 250.0}]
+	registrados.clear()
+	stock = {"crudo": 60, "comida": 45, "madera": 100, "municion": 240}
+	puertas = []
+	for puesto in puestos_ventana():
+		if puesto.f != 0:
+			continue
+		barreras.append({"id":puesto.puesto,"x":CASA_X1,"px":CASA_X1-14.0,"y":puesto.y,"f":puesto.f,"hp":150.0,"max":150.0})
 	huertos = []
-	for x in [350.0, 378.0, 406.0]:
-		huertos.append({"x": x, "y": 0.6, "listo": 0.0, "ocupado": false})
+	for x in [30.0, 70.0, 110.0]:
+		for profundidad in [0.6, 3.2]:
+			huertos.append({"x": x, "y": profundidad, "listo": 0.0, "ocupado": false})
 	arboles = []
-	for x in [440.0, 465.0, 490.0]:
-		arboles.append({"x": x, "y": 3.2, "listo": 0.0, "ocupado": false})
+	for x in [25.0, 65.0, 105.0]:
+		arboles.append({"x": x, "y": 6.0, "listo": 0.0, "ocupado": false})
 	cadaveres.clear()
 	fx.clear()
 	kills = 0
@@ -135,32 +153,42 @@ func vivos() -> int:
 # ---------------------------------------------------------------- eventos de donación
 
 func aplicar_regalo(usuario: String, regalo: String, cantidad: int = 1) -> void:
-	var tipo: String = config.regalos.get(regalo, "suministros")
+	var clave := regalo.strip_edges().to_lower()
+	var canonico := "Rose" if clave in ["rose", "rosa", "rosita"] else ("GG" if clave == "gg" else regalo)
+	var tipo: String = config.regalos.get(canonico, "suministros")
 	for i in range(maxi(cantidad, 1)):
 		match tipo:
 			"persona":
-				_rosa(usuario)
+				_recibir_gg(usuario)
 			"zombis":
-				_gg(usuario)
+				_recibir_rosa(usuario)
 			_:
 				_suministros(usuario, null)
 
 
 func _buscar_vivo(usuario: String) -> Variant:
 	for s in supervivientes:
-		if String(s.nombre).to_lower() == usuario.to_lower():
+		if s.hp > 0.0 and String(s.nombre).to_lower() == usuario.strip_edges().to_lower():
 			return s
 	return null
 
 
-func _rosa(usuario: String) -> void:
+func _recibir_gg(usuario: String) -> void:
+	usuario = usuario.strip_edges()
+	if usuario.is_empty():
+		return
+	var identidad := usuario.to_lower()
 	var s = _buscar_vivo(usuario)
+	if s == null and registrados.has(identidad):
+		_suministros(usuario, null)
+		return
 	if s == null:
 		if vivos() >= MAX_VIVOS:
 			_suministros(usuario, null)
 			return
 		s = _nuevo_superviviente(usuario)
 		supervivientes.append(s)
+		registrados[identidad] = s.id
 		tuvo_gente = true
 		if not nombres_gen.has(usuario):
 			nombres_gen.append(usuario)
@@ -178,14 +206,20 @@ func _suministros(usuario: String, s: Variant) -> void:
 	stock.madera += 3
 	stock.municion += 10 + n
 	for o in supervivientes:
-		o.hp = minf(100.0, o.hp + 15.0)
+		if o.hp > 0.0:
+			o.hp = minf(100.0, o.hp + 15.0)
 	if s != null:
 		s.aportes += 1
-		_texto("+suministros", s.x, PISO_Y[s.f] + 2.3, Color(1, 0.9, 0.3))
+		s.nivel_arma = mini(4, s.nivel_arma + 1)
+		if s.modelo_arma == "Pistola":
+			s.modelo_arma = "AK" if rng.randf() < 0.5 else "M4"
+			s.cartuchos = ARMAS[s.modelo_arma].cargador
+		s.arma = s.modelo_arma + " +" + str(s.nivel_arma - 1)
+		_texto("+suministros / " + s.arma, s.x, PISO_Y[s.f] + 2.3, Color(1, 0.9, 0.3))
 	aviso("%s reparte suministros" % usuario, 3.0)
 
 
-func _gg(usuario: String) -> void:
+func _recibir_rosa(usuario: String) -> void:
 	var n := mini(5 + gen, 30)
 	for i in range(n):
 		var r := rng.randf()
@@ -200,13 +234,17 @@ func _gg(usuario: String) -> void:
 
 func _nuevo_superviviente(nombre: String) -> Dictionary:
 	var h: int = absi(nombre.hash())
+	var sorteo := rng.randf()
+	var modelo := "AK" if sorteo < 0.3 else ("M4" if sorteo < 0.55 else "Pistola")
 	var s := {
 		"id": next_id, "nombre": nombre,
-		"x": ESCALERA_X + rng.randf_range(-20.0, 20.0), "f": 0, "vy": 0.0, "y": rng.randf_range(1.4, 3.6), "y_casa": rng.randf_range(1.4, 3.6),
+		"x": CASA_X0+30.0+rng.randf_range(0.0,25.0), "f": 0, "vy": 0.0, "y": PASILLO_Y, "y_casa": rng.randf_range(1.4, 3.6),
 		"hp": 100.0, "hambre": rng.randf_range(10.0, 35.0), "energia": rng.randf_range(70.0, 100.0),
-		"accion": "", "ox": 0.0, "of": 0, "trab": 0.0, "dur": 0.0, "llego": false,
+		"escalera": {}, "accion": "", "ox": 0.0, "of": 0, "oy": PASILLO_Y, "preparando": false, "trab": 0.0, "dur": 0.0, "llego": false,
 		"cd_dec": 0.0, "cd_ataque": 0.0, "flash": 0.0, "ref": null, "lado": 0,
-		"aportes": 0, "kills": 0, "dir": 1, "camina": false, "anim": rng.randf() * 10.0,
+		"cama_id": -1, "modelo_arma": modelo, "nivel_arma": 1, "arma": modelo,
+		"cartuchos": ARMAS[modelo].cargador, "recarga": 0.0, "retroceso": 0.0,
+		"tiempo_tiro": 10.0, "tiros": 0, "apunta_x": CASA_X1 + 150.0, "apunta_y": PUERTA_Y, "apunta_z": 1.0, "puesto": -1, "aportes": 0, "kills": 0, "dir": 1, "camina": false, "anim": rng.randf() * 10.0,
 		"dice": "", "dice_ttl": 0.0, "golpe": 0.0,
 		"val": rng.randf_range(0.8, 1.3), "tr": rng.randf_range(0.8, 1.3), "glot": rng.randf_range(0.8, 1.3),
 		"camisa": h % 8, "look": (h / 8) % 3,
@@ -242,7 +280,8 @@ func step(dt: float) -> void:
 	_procesar_cola()
 	_ambiente()
 	for s in supervivientes:
-		_vida(s, dt)
+		if s.hp > 0.0:
+			_vida(s, dt)
 	for z in zombis:
 		_zombi(z, dt)
 	# muertes de supervivientes
@@ -254,7 +293,7 @@ func step(dt: float) -> void:
 			quedan.append(s)
 	supervivientes = quedan
 	zombis = zombis.filter(func(z): return z.hp > 0.0)
-	barreras = barreras.filter(func(b): return b.hp > 0.0)
+	# Las defensas rotas persisten: se reconstruyen tabla por tabla.
 	# efectos
 	for e in textos:
 		e.ttl -= dt
@@ -293,7 +332,7 @@ func _morir(s: Dictionary) -> void:
 	muertes += 1
 	fx.append({"k": "muerte_s", "x": s.x, "y": s.y, "z": s.vy + 1.0, "dir": s.dir})
 	tumbas.append({"x": s.x, "y": s.y, "nombre": s.nombre})
-	cadaveres.append({"x": s.x, "y": s.y, "z": s.vy, "tipo": "", "dir": s.dir, "t": 0.0, "surv": true, "camisa": s.camisa, "look": s.look})
+	cadaveres.append({"id": "s%d" % s.id, "x": s.x, "y": s.y, "z": s.vy, "tipo": "", "dir": s.dir, "t": 0.0, "surv": true, "modelo_arma":s.modelo_arma, "camisa": s.camisa, "look": s.look})
 	_texto("RIP " + s.nombre, s.x, PISO_Y[s.f] + 2.3, Color(1, 0.4, 0.4))
 	aviso("%s murió" % s.nombre, 3.0)
 
@@ -321,32 +360,36 @@ func _ambiente() -> void:
 
 func spawn_zombi(lado: int, tipo: String) -> void:
 	var z := {
-		"x": ANCHO + 12.0, "y": CARRILES[rng.randi() % CARRILES.size()], "f": 0, "vy": 0.0, "lado": 1,
-		"tipo": tipo, "cd": 0.0, "dentro": false, "anim": rng.randf() * 10.0, "esc_t": 0.0, "dir": 1,
+		"id": next_zombie, "x": ANCHO + 12.0, "y": CARRILES[rng.randi() % CARRILES.size()], "f": 0, "vy": 0.0, "lado": 1,
+		"entrada": rng.randi_range(0,1), "escalera": {}, "tipo": tipo, "cd": 0.0, "dentro": false, "anim": rng.randf() * 10.0, "esc_t": 0.0, "dir": 1,
 		"camina": true, "atac": 0.0, "golpe": 0.0,
 	}
 	match tipo:
 		"corredor":
-			z.hp = 20.0; z.vel = rng.randf_range(30.0, 36.0); z.dmg = 6.0; z.dps = 6.0
+			z.hp = 12.0; z.vel = rng.randf_range(30.0, 36.0); z.dmg = 6.0; z.dps = 6.0
 		"bruto":
-			z.hp = 110.0; z.vel = rng.randf_range(11.0, 14.0); z.dmg = 18.0; z.dps = 28.0
+			z.hp = 55.0; z.vel = rng.randf_range(11.0, 14.0); z.dmg = 18.0; z.dps = 28.0
 		_:
-			z.hp = 32.0; z.vel = rng.randf_range(15.0, 20.0); z.dmg = 8.0; z.dps = 8.0
+			z.hp = 18.0; z.vel = rng.randf_range(15.0, 20.0); z.dmg = 8.0; z.dps = 8.0
 	z.max = z.hp
 	zombis.append(z)
+	next_zombie += 1
 
 
 # ---------------------------------------------------------------- superviviente
 
 func _vida(s: Dictionary, dt: float) -> void:
 	s.cd_ataque -= dt
+	s.tiempo_tiro += dt
+	s.retroceso = maxf(0.0, s.retroceso - dt * 7.0)
+	if s.recarga > 0.0:
+		s.recarga = maxf(0.0, s.recarga - dt)
+		if s.recarga <= 0.0:
+			s.cartuchos = ARMAS[s.modelo_arma].cargador
 	s.flash -= dt
 	s.golpe = maxf(0.0, s.golpe - dt)
 	s.dice_ttl -= dt
-	s.anim += dt * (8.0 if s.camina else 0.0)
-	s.vy = move_toward(s.vy, PISO_Y[s.f], 2.6 * dt)
-	var y_meta: float = s.y_casa if s.x < CASA_X1 - 4.0 else 0.8
-	s.y = move_toward(s.y, y_meta, 1.4 * dt)
+	s.anim += dt * (7.0 if s.camina else 1.0)
 	s.cd_dec -= dt
 	if s.cd_dec <= 0.0 or s.accion == "":
 		_decidir(s)
@@ -366,7 +409,7 @@ func _vida(s: Dictionary, dt: float) -> void:
 
 
 func _fuera(s: Dictionary) -> bool:
-	return s.x > CASA_X1 + 2.0
+	return s.x > CASA_X1 + 2.0 or s.x < CASA_X0 - 2.0
 
 
 func _zombi_cerca_casa(rango: float) -> Variant:
@@ -410,39 +453,25 @@ func _contar(accion: String) -> int:
 	return n
 
 
-func _hueco_libre() -> Variant:
-	for x in HUECOS_DER:
-		var ocupado := false
-		for b in barreras:
-			if absf(b.x - x) < 1.0:
-				ocupado = true
-		for o in supervivientes:
-			if o.accion == "construir" and absf(o.ox - x) < 1.0:
-				ocupado = true
-		if not ocupado and not _zombi_cerca_de(x, 90.0):
-			return x
-	return null
-
-
-func _dañado() -> Variant:
+func _dañado(trabajador: Variant = null) -> Variant:
 	var mejor = null
-	var mr := 0.6
+	var mr := 1.0
 	for p in puertas:
 		var r: float = p.hp / p.max
-		if r < mr and not _reservado(p) and not _zombi_cerca_de(p.x, 45.0):
+		if r < mr and not _reservado(p, trabajador):
 			mr = r
 			mejor = p
 	for b in barreras:
 		var r: float = b.hp / b.max
-		if r < mr and not _reservado(b) and not _zombi_cerca_de(b.x, 45.0):
+		if r < mr and not _reservado(b, trabajador):
 			mr = r
 			mejor = b
 	return mejor
 
 
-func _reservado(obj: Variant) -> bool:
+func _reservado(obj: Variant, excepto: Variant = null) -> bool:
 	for o in supervivientes:
-		if o.accion == "reparar" and is_same(o.ref, obj):
+		if not is_same(o, excepto) and o.accion == "reparar" and is_same(o.ref, obj):
 			return true
 	return false
 
@@ -473,18 +502,12 @@ func _decidir(s: Dictionary) -> void:
 		if fuera:
 			c.append([96.0, {"tipo": "volver", "x": CASA_X1 - 36.0, "f": 0}])
 		elif hay_municion and s.hp > 20.0:
-			var piso := 1
-			var n1 := _ocupantes_ventana(1)
-			if n1 >= 3:
-				piso = 0 if _ocupantes_ventana(0) < 3 else 1
-			var k := _ocupantes_ventana(piso)
-			var wx: float = VENTANA_DER - 16.0 * k
-			c.append([78.0 * s.val, {"tipo": "disparar", "x": wx, "f": piso, "lado": 1}])
-		elif s.val > 1.05 and s.hp > 50.0:
-			c.append([52.0 * s.val, {"tipo": "disparar", "x": CASA_X1 - 20.0, "f": 0, "lado": 1}])
+			var puesto := _puesto_ventana(s)
+			if not puesto.is_empty():
+				c.append([84.0 * s.val, puesto])
 
 	if s.hambre >= 55.0 and (stock.comida > 0 or stock.crudo > 0):
-		c.append([(s.hambre - 20.0) * 1.1 * s.glot, {"tipo": "comer", "x": MESA_X, "f": 0, "dur": 3.0}])
+		c.append([(s.hambre - 20.0) * 1.1 * s.glot, {"tipo": "comer", "x": MESA_X + float(s.id % 8 - 4) * 12.0, "f": 0, "dur": 3.0}])
 
 	var durmiendo: bool = s.accion == "dormir"
 	if s.energia < 30.0 or (durmiendo and s.energia < 92.0):
@@ -494,21 +517,17 @@ func _decidir(s: Dictionary) -> void:
 
 	var urg := 20.0 if amen != null else 0.0
 
-	if stock.crudo >= 1 and stock.comida < 2 * pop + 2 and (_contar("cocinar") == 0 or s.accion == "cocinar"):
-		c.append([(46.0 + (10.0 if stock.comida == 0 else 0.0)) * s.tr, {"tipo": "cocinar", "x": COCINA_X, "f": 0, "dur": 5.0}])
+	if stock.crudo >= 1 and stock.comida < 2 * pop + 2 and (_contar("cocinar") < 4 or s.accion == "cocinar"):
+		c.append([(46.0 + (10.0 if stock.comida == 0 else 0.0)) * s.tr, {"tipo": "cocinar", "x": COCINA_X + (s.id % 4) * 16.0, "f": 0, "dur": 5.0}])
 
-	if stock.madera >= COSTE_BARRERA and barreras.size() < 6 and (_contar("construir") < 2 or s.accion == "construir"):
-		var hx = _hueco_libre()
-		if hx != null:
-			c.append([(50.0 + urg) * s.tr, {"tipo": "construir", "x": hx, "f": 0, "dur": 5.0}])
 
 	if stock.madera >= 1:
-		var d = _dañado()
+		var d = _dañado(s)
 		if d != null:
-			var ox2: float = d.x - 14.0
-			c.append([(52.0 + urg) * s.tr, {"tipo": "reparar", "x": ox2, "f": 0, "dur": 2.5, "ref": d}])
+			var ox2: float = d.px - 8.0
+			c.append([(90.0 + urg) * s.tr, {"tipo": "reparar", "x": ox2, "f": d.f, "y": d.y, "dur": 0.8, "ref": d}])
 
-	if not noche and amen == null:
+	if not noche:
 		if stock.crudo < 3 * pop + 4:
 			var h = _libre_recurso(huertos, 200.0)
 			if h != null:
@@ -519,7 +538,7 @@ func _decidir(s: Dictionary) -> void:
 				c.append([38.0 * s.tr, {"tipo": "talar", "x": a.x, "f": 0, "dur": 6.0, "ref": a}])
 
 	var px := rng.randf_range(CASA_X0 + 30.0, CASA_X1 - 30.0)
-	c.append([8.0, {"tipo": "pasear", "x": px, "f": rng.randi() % 2, "dur": rng.randf_range(1.5, 4.0)}])
+	c.append([8.0, {"tipo": "pasear", "x": px, "f": rng.randi() % PISO_Y.size(), "dur": rng.randf_range(1.5, 4.0)}])
 
 	var mejor = null
 	var mp := -1e9
@@ -541,17 +560,41 @@ func _ocupantes_ventana(piso: int) -> int:
 	return n
 
 
+func camas() -> Array:
+	return navegacion.datos.camas
+
+
 func _cama(s: Dictionary) -> Dictionary:
-	var usadas: Array = []
-	for o in supervivientes:
-		if o.accion == "dormir" and o.id != s.id:
-			usadas.append(o.ox)
-	var x: float = CAMAS[s.id % CAMAS.size()]
-	for cx in CAMAS:
-		if not usadas.has(cx):
-			x = cx
-			break
-	return {"tipo": "dormir", "x": x, "f": 1}
+	for cama in camas():
+		var usada := false
+		for o in supervivientes:
+			if o.id!=s.id and o.accion=="dormir" and o.cama_id==cama.id:
+				usada=true
+		if not usada:
+			return {"tipo":"dormir","x":cama.acceso_x,"y":cama.acceso_y,"f":cama.f,"cama":cama.id}
+	return {"tipo":"pasear","x":ESCALERA_X,"f":1,"dur":3.0}
+
+
+func puestos_ventana() -> Array:
+	var puestos: Array = []
+	for piso in range(4):
+		for i in range(2):
+			puestos.append({"tipo": "disparar", "x": CASA_X1-12.0, "y": 1.1 + i * 2.1, "f": piso, "lado": 1, "puesto": puestos.size()})
+	return puestos
+
+
+func _puesto_ventana(s: Dictionary) -> Dictionary:
+	var puestos := puestos_ventana()
+	if s.accion == "disparar" and s.puesto >= 0 and s.puesto < MAX_TIRADORES:
+		return puestos[s.puesto]
+	for puesto in puestos:
+		var ocupado := false
+		for o in supervivientes:
+			if o.id != s.id and o.accion == "disparar" and o.puesto == puesto.puesto:
+				ocupado = true
+		if not ocupado:
+			return puesto
+	return {}
 
 
 func _comenzar(s: Dictionary, a: Dictionary) -> void:
@@ -562,17 +605,24 @@ func _comenzar(s: Dictionary, a: Dictionary) -> void:
 			s.ox = a.x
 			s.of = a.f
 			s.lado = a.get("lado", 0)
+			s.oy = a.get("y", s.oy)
+			s.puesto = a.get("puesto", -1)
 		return
 	_soltar(s)
 	s.trab = 0.0
 	if rng.randf() < 0.18:
 		_decir(s, a.tipo)
+	s.cama_id = a.get("cama",-1)
+	s.erase("ruta_destino")
 	s.accion = a.tipo
 	s.ox = a.x
 	s.of = a.f
 	s.dur = a.get("dur", 0.0)
 	s.lado = a.get("lado", 0)
 	s.llego = false
+	s.preparando = false
+	s.oy = a.get("y", _profundidad_puesto(a.tipo, a.get("ref", null)))
+	s.puesto = a.get("puesto", -1)
 	var ref = a.get("ref", null)
 	if ref != null:
 		s.ref = ref
@@ -581,26 +631,93 @@ func _comenzar(s: Dictionary, a: Dictionary) -> void:
 
 
 func _soltar(s: Dictionary) -> void:
+	s.puesto = -1
 	if s.ref != null and s.ref.has("ocupado"):
 		s.ref.ocupado = false
 	s.ref = null
 
 
-func _mover(s: Dictionary, tx: float, tf: int, dt: float) -> bool:
-	var meta := tx
-	if s.f != tf:
-		meta = ESCALERA_X
-		if absf(s.x - meta) < 2.0:
-			s.f = tf
-			meta = tx
+func _profundidad_puesto(accion: String, ref: Variant) -> float:
+	match accion:
+		"cocinar", "construir": return 1.4
+		"comer": return 1.2
+		"dormir": return 0.6
+		"cultivar", "talar": return float(ref.y) if ref != null else PUERTA_Y
+		"disparar": return 2.4
+		"reparar": return PUERTA_Y
+	return PASILLO_Y
+
+
+func _andar_x(s: Dictionary, meta: float, dt: float) -> bool:
 	var d: float = meta - s.x
-	if absf(d) < 1.5:
-		s.camina = false
-		return s.f == tf
-	s.x += signf(d) * minf(absf(d), VEL_S * dt)
+	if absf(d) < 0.05:
+		return true
+	s.x = move_toward(s.x, meta, VEL_S * dt)
 	s.dir = int(signf(d))
 	s.camina = true
-	return false
+	return absf(s.x - meta) < 0.05
+
+
+func _andar_y(s: Dictionary, meta: float, dt: float) -> bool:
+	if absf(s.y - meta) > 0.02:
+		s.y = move_toward(s.y, meta, 1.4 * dt)
+		s.camina = true
+	return absf(s.y - meta) < 0.02
+
+
+func _mover(s: Dictionary, tx: float, tf: int, dt: float) -> bool:
+	s.camina=false
+	if not s.escalera.is_empty():
+		_avanzar_escalera(s,dt)
+		return false
+	var velocidad: float=s.get("vel",VEL_S)/25.0
+	for umbral in [CASA_X0,CASA_X1]:
+		if ((s.x>umbral and tx<=umbral) or (s.x<=umbral and tx>umbral)) and s.f==0:
+			var destino_umbral: float=umbral+(1.0 if tx>umbral else -1.0)
+			if absf(s.y-PUERTA_Y)>.02:destino_umbral=umbral+(5.0 if s.x>umbral else -5.0)
+			navegacion.seguir(s,destino_umbral,PUERTA_Y,0,dt,velocidad)
+			return false
+	if s.f!=tf:
+		var entrada:=ESCALERA_X if tf>s.f else ESCALERA_X+40.0
+		if navegacion.seguir(s,entrada,PASILLO_Y,s.f,dt,velocidad):
+			_empezar_escalera(s,tf)
+		return false
+	return navegacion.seguir(s,tx,s.oy,tf,dt,velocidad)
+
+
+func _empezar_escalera(c: Dictionary, destino: int) -> void:
+	var hacia := 1 if destino > c.f else -1
+	c.escalera = {"desde": c.f, "hasta": c.f + hacia, "p": 0.0}
+	c.camina = true
+
+
+func _avanzar_escalera(c: Dictionary, dt: float) -> void:
+	var e: Dictionary = c.escalera
+	e.p = minf(1.0, e.p + dt / 3.0)
+	var sube: bool = e.hasta > e.desde
+	var p: float = e.p if sube else 1.0 - e.p
+	var base: float = PISO_Y[mini(e.desde, e.hasta)]
+	if p < 0.45:
+		var u := p / 0.45
+		c.x = ESCALERA_X
+		c.y = PASILLO_Y + u * 3.0
+		c.vy = base + ceilf(u * 12.0) * 0.2
+	elif p < 0.55:
+		c.x = lerpf(ESCALERA_X, ESCALERA_X + 40.0, (p - 0.45) / 0.1)
+		c.y = PASILLO_Y + 3.0
+		c.vy = base + 2.4
+	else:
+		var u := (p - 0.55) / 0.45
+		c.x = ESCALERA_X + 40.0
+		c.y = PASILLO_Y + (1.0 - u) * 3.0
+		c.vy = base + 2.4 + ceilf(u * 12.0) * 0.2
+	c.camina = true
+	if e.p >= 1.0:
+		c.f = e.hasta
+		c.vy = PISO_Y[c.f]
+		c.y = PASILLO_Y
+		c.escalera = {}
+	c.erase("ruta_destino")
 
 
 func _actuar(s: Dictionary, dt: float) -> void:
@@ -630,15 +747,12 @@ func _terminar(s: Dictionary) -> void:
 				stock.crudo -= 1
 				stock.comida += 2
 				_texto("+2 comida", s.x, PISO_Y[s.f] + 2.1, Color(1, 0.7, 0.3))
-		"construir":
-			if stock.madera >= COSTE_BARRERA:
-				stock.madera -= COSTE_BARRERA
-				barreras.append({"x": s.ox, "hp": 120.0, "max": 120.0})
 		"reparar":
 			var r = s.ref
 			if r != null and stock.madera >= 1:
 				stock.madera -= 1
-				r.hp = minf(r.max, r.hp + 35.0)
+				r.hp = minf(r.max, r.hp + TABLA_HP)
+				_texto("+1 tabla", s.x, PISO_Y[s.f] + 2.0, Color(0.9, 0.75, 0.4))
 		"cultivar":
 			if s.ref != null:
 				s.ref.listo = t + 70.0
@@ -655,17 +769,16 @@ func _terminar(s: Dictionary) -> void:
 
 
 func _reflejo(s: Dictionary) -> void:
-	if s.cd_ataque > 0.0 or s.accion == "dormir":
+	if s.cd_ataque > 0.0 or s.recarga > 0.0 or not s.escalera.is_empty() or s.accion == "dormir":
 		return
 	var objetivo = null
 	var md := 1e9
 	var afuera := _fuera(s)
-	var en_ventana := false
-	var rango_v := 0.0
-	if not afuera and s.x > CASA_X1 - 70.0:
-		en_ventana = true
-		rango_v = 280.0 + (40.0 if s.f == 1 else 0.0)
+	var en_ventana: bool = s.accion == "disparar" and s.llego and not s.camina and s.puesto >= 0 and s.puesto < MAX_TIRADORES
+	var rango_v := 650.0
 	for z in zombis:
+		if z.hp <= 0.0:
+			continue
 		var d := 1e9
 		if z.dentro:
 			if z.f == s.f:
@@ -674,28 +787,37 @@ func _reflejo(s: Dictionary) -> void:
 					d = 1e9
 		else:
 			if en_ventana:
-				if z.x > CASA_X1:
-					d = z.x - s.x
+				d = absf(z.x - s.x)
 				if d > rango_v:
 					d = 1e9
-			elif afuera and s.f == 0:
-				d = absf(z.x - s.x)
-				if d > 140.0:
-					d = 1e9
+
 		if d < md:
 			md = d
 			objetivo = z
 	if objetivo == null:
 		return
 	if stock.municion > 0:
+		var arma: Dictionary = ARMAS[s.modelo_arma]
+		if s.cartuchos <= 0:
+			s.recarga = arma.recarga
+			return
 		stock.municion -= 1
-		s.cd_ataque = rng.randf_range(0.8, 1.1)
-		s.flash = 0.1
+		s.cartuchos -= 1
+		s.cd_ataque = arma.cadencia / (1.0 + (s.nivel_arma - 1) * 0.12)
+		s.flash = 0.065
+		s.retroceso = 1.0
+		s.tiempo_tiro = 0.0
+		s.tiros += 1
+		s.apunta_x = objetivo.x
+		s.apunta_y = objetivo.y
+		s.apunta_z = objetivo.vy + 1.0
 		s.dir = 1 if objetivo.x > s.x else -1
 		var prob := 0.8 if md < 160.0 else 0.6
-		disparos.append({"x0": s.x + s.dir * 14.0, "d0": s.y, "z0": s.vy + 1.3, "x1": objetivo.x, "d1": objetivo.y, "z1": objetivo.vy + 1.0, "ttl": 0.09})
+		var tiro := {"k":"disparo3d", "x0":s.x+s.dir*(22.0 if s.modelo_arma!="Pistola" else 8.0),"d0":s.y,"z0":s.vy+1.3,"x1":objetivo.x,"d1":objetivo.y,"z1":objetivo.vy+1.0,"ttl":0.045,"origen":s.id}
+		disparos.append(tiro)
+		fx.append(tiro.duplicate())
 		if rng.randf() < prob:
-			_dañar_zombi(objetivo, rng.randf_range(16.0, 24.0), s)
+			_dañar_zombi(objetivo, arma.dano * rng.randf_range(0.85, 1.15) * (1.0 + (s.nivel_arma - 1) * 0.2), s)
 	elif md < 18.0 and objetivo.f == s.f:
 		s.cd_ataque = 0.7
 		s.flash = 0.1
@@ -710,7 +832,7 @@ func _dañar_zombi(z: Dictionary, dmg: float, s: Dictionary) -> void:
 	z.x += s.dir * 2.0
 	fx.append({"k": "golpe", "x": z.x, "y": z.y, "z": z.vy + 1.1, "dir": s.dir, "mata": z.hp <= 0.0, "tipo": z.tipo})
 	if z.hp <= 0.0:
-		cadaveres.append({"x": z.x, "y": z.y, "z": z.vy, "tipo": z.tipo, "dir": z.dir, "t": 0.0, "surv": false})
+		cadaveres.append({"id": "z%d" % z.id, "x": z.x, "y": z.y, "z": z.vy, "tipo": z.tipo, "dir": z.dir, "t": 0.0, "surv": false})
 		kills += 1
 		s.kills += 1
 		_texto("+1", z.x, z.vy + 2.0, Color(0.6, 1, 0.6))
@@ -722,6 +844,8 @@ func _objetivo_zombi(z: Dictionary) -> Variant:
 	var mejor = null
 	var md := 1e9
 	for s in supervivientes:
+		if s.x < CASA_X0 or s.hp <= 0.0:
+			continue # El huerto vallado es una zona segura real, no solo decoracion.
 		var d: float = absf(s.x - z.x) + 60.0 * absf(s.f - z.f)
 		if not z.dentro:
 			if not (_fuera(s) and s.f == 0 and absf(s.x - z.x) < 170.0):
@@ -735,11 +859,9 @@ func _objetivo_zombi(z: Dictionary) -> Variant:
 func _obstaculo(z: Dictionary, dir: int) -> Variant:
 	if z.dentro or dir >= 0:
 		return null
-	for b in barreras:
-		if b.x < z.x and z.x - b.x < 9.0:
-			return b
-	if z.x > CASA_X1 and z.x - CASA_X1 < 9.0 and puertas[0].hp > 0.0:
-		return puertas[0]
+	var ventana: Dictionary = barreras[z.entrada]
+	if ventana.hp > 0 and z.x >= ventana.x and z.x - ventana.x < 9.0:
+		return ventana
 	return null
 
 
@@ -747,23 +869,43 @@ func _zombi(z: Dictionary, dt: float) -> void:
 	if z.hp <= 0.0:
 		return
 	z.cd -= dt
-	z.vy = move_toward(z.vy, PISO_Y[z.f], 2.6 * dt)
+	if not z.escalera.is_empty():
+		z.anim += dt * 6.0
+		_avanzar_escalera(z, dt)
+		return
 	z.atac = maxf(0.0, z.atac - dt)
 	z.golpe = maxf(0.0, z.golpe - dt)
 	z.anim += dt * 6.0
-	if not z.dentro and z.x < CASA_X1 - 6.0:
+	if not z.dentro and z.x < float(barreras[z.entrada].x) - 6.0:
 		z.dentro = true
+	if not z.dentro and z.x < float(barreras[z.entrada].x) + 30.0:
+		var entrada: Dictionary = barreras[z.entrada]
+		z.y = move_toward(z.y, entrada.y, 1.8 * dt)
+		if absf(z.y - entrada.y) > 0.15:
+			z.camina = true
+			return
 	var obj = _objetivo_zombi(z)
+	if z.dentro and obj!=null:
+		if obj.f==z.f and absf(obj.x-z.x)<16.0 and absf(obj.y-z.y)<1.2:
+			z.camina=false
+			if z.cd<=0:
+				obj.hp-=z.dmg;z.cd=1.1;z.atac=.5;obj.golpe=.12
+				fx.append({"k":"golpe_s","x":obj.x,"y":obj.y,"z":obj.vy+1.1,"dir":z.dir,"mata":obj.hp<=0})
+		else:
+			z.oy=obj.y
+			_mover(z,obj.x,obj.f,dt)
+		return
 	var dir := 0
 	if obj != null:
 		if obj.f != z.f and z.dentro:
-			if absf(z.x - ESCALERA_X) < 2.0:
-				z.esc_t += dt
-				if z.esc_t >= 1.2:
-					z.f = obj.f
-					z.esc_t = 0.0
+			var entrada := ESCALERA_X if obj.f > z.f else ESCALERA_X + 40.0
+			if absf(z.x - entrada) < 2.0:
+				z.x = entrada
+				z.y = move_toward(z.y, PASILLO_Y, 1.2 * dt)
+				if absf(z.y - PASILLO_Y) < 0.05:
+					_empezar_escalera(z, obj.f)
 			else:
-				dir = int(signf(ESCALERA_X - z.x))
+				dir = int(signf(entrada - z.x))
 		else:
 			z.y = move_toward(z.y, obj.y, 1.2 * dt)
 			if obj.f == z.f and absf(obj.x - z.x) < 16.0 and absf(obj.y - z.y) < 1.4:
@@ -785,11 +927,20 @@ func _zombi(z: Dictionary, dt: float) -> void:
 		z.dir = dir
 		var ob = _obstaculo(z, dir)
 		if ob != null:
-			ob.hp -= z.dps * dt
+			var tablas_antes := ceili(ob.hp / TABLA_HP)
+			ob.hp = maxf(0.0, ob.hp - z.dps * dt)
+			if ceili(ob.hp / TABLA_HP) < tablas_antes:
+				fx.append({"k": "tabla", "x": ob.x, "y": ob.y, "z": PISO_Y[ob.f]+1.0, "dir": -1})
 			z.camina = false
 			z.atac = 0.3
 		else:
-			z.x += dir * z.vel * dt
+			var proximo: float = z.x + dir * z.vel * dt
+			# Barrido: una zancada grande nunca atraviesa una defensa viva.
+			if dir < 0 and not z.dentro:
+				var entrada: Dictionary = barreras[z.entrada]
+				if entrada.hp > 0 and z.x >= entrada.x and proximo < entrada.x + 4.0:
+					proximo = maxf(proximo,entrada.x+4.0)
+			z.x = maxf(CASA_X0 + 8.0, proximo)
 	# estela: la casa nunca es atravesada si la puerta cierra el paso
 
 
