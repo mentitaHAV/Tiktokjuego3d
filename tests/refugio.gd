@@ -24,7 +24,7 @@ func identidades() -> void:
 	sim.aplicar_regalo(" JUANITO ", "gg")
 	comprobar(sim.vivos() == 1 and sim.alm.municion > municion and juan.nivel_arma == 3, "Identidad no normalizada")
 	sim.aplicar_regalo("OtraPersona", "Rose", 2)
-	comprobar(sim.vivos() == 1 and sim.cola_zombis.size() == 12, "Las rosas no invocan la cantidad de oleadas")
+	comprobar(sim.vivos() == 1 and sim.cola_zombis.size() == 10, "Las rosas no invocan 5 zombis por moneda")
 	sim._procesar_cola()
 	comprobar(sim.zombis.size() > 0 and sim.zombis[0].x > Sim.CASA_X1, "Zombis no aparecen por la derecha")
 	# Una identidad muerta no se duplica/revive con el siguiente GG de la misma generacion.

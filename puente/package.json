@@ -1,0 +1,10 @@
+{
+  "name": "casa-sobrevivientes-puente",
+  "version": "1.0.0",
+  "description": "Puente TikTok LIVE -> eventos.jsonl para la Casa de Sobrevivientes",
+  "main": "tiktok.js",
+  "license": "ISC",
+  "dependencies": {
+    "tiktok-live-connector": "^2.5.0"
+  }
+}

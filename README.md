@@ -10,9 +10,7 @@ Los humanos trabajan, comen, duermen, defienden y reparan de forma autonoma.
 
 ## Regalos e identidad
 
-- **Rosa / Rose:** invoca una oleada de zombis desde la derecha. Cada unidad del combo
-  genera una oleada (6 zombis en la primera generacion, mas en generaciones posteriores).
-  Las apariciones ambientales estan desactivadas: las oleadas dependen de las rosas.
+- **Likes y monedas:** 1 like = 1 zombi; cada moneda de cualquier regalo (Rose incluida) = 5 zombis.
 - **GG:** el primer GG crea una persona con el nombre del usuario. GG posteriores
   entregan suministros, municion y mejoras de arma; nunca crean una segunda copia.
   Dos GG de Juanito crean a Juanito y le dan un primer paquete de equipo.
@@ -21,19 +19,18 @@ Los humanos trabajan, comen, duermen, defienden y reparan de forma autonoma.
   Una nueva generacion permite volver a participar.
 - Los humanos reciben al azar pistola, AK o M4. GG repetidos mejoran el arma
   hasta cuatro niveles de daño/cadencia y pueden sustituir la pistola por un fusil.
-  Otros regalos aportan suministros.
 
-La entrada existente es **un archivo local `eventos.jsonl`**, una linea por evento:
+La entrada es **un archivo local `eventos.jsonl`**, una linea por evento (lo escribe el puente de TikTok):
 
 ```json
-{"usuario":"juanito","regalo":"GG","cantidad":2}
-{"usuario":"ana","regalo":"Rose","cantidad":1}
+{"usuario":"juanito","regalo":"like","cantidad":12}
+{"usuario":"ana","regalo":"Rose","cantidad":1,"monedas":1}
+{"usuario":"pepe","regalo":"Lion","cantidad":1,"monedas":29999}
+{"usuario":"luis","regalo":"GG","cantidad":1,"monedas":1}
 ```
 
-Un conector externo del directo debe escribir estas lineas usando la cantidad nueva
-de cada evento (no repetir totales acumulados de un combo). Este repositorio no incluye
-la autenticacion ni una conexion directa a TikTok. Usa el identificador estable de
-usuario de TikTok en `usuario`, conservando su nombre para el personaje.
+`cantidad` es la cantidad nueva del evento (no totales acumulados de un combo) y `monedas` el valor total del regalo.
+`usuario` es el identificador de TikTok del espectador.
 
 ## Mapa y defensa
 
@@ -76,6 +73,20 @@ Siempre hay al menos un humano de guardia **en una ventana** (uno mas por cada 2
 noche, haya zombis o no. Si el vigilante se cansa (poca energia o hambre) pide relevo y sigue en su puesto
 hasta que otro llega; si muere o se va a luchar dentro, otro ocupa su sitio. Solo abandona la ventana
 sin relevo en una emergencia (hambre extrema o agotamiento). Regresion: `tests/vigilancia.gd`.
+
+## Conexion con TikTok LIVE
+
+- **1 like = 1 zombi. Cada moneda de un regalo = 5 zombis** (30 monedas = 150 zombis; una Rose de 1 moneda = 5).
+  **GG** sigue creando a la persona (y los GG repetidos dan suministros y armas).
+- El puente `puente/tiktok.js` (Node) escucha el directo de `puente/config.json` (`tiktok`) con
+  `tiktok-live-connector` y escribe una linea por evento en `eventos.jsonl`; el juego la lee cada medio segundo.
+  Combina los eventos de like con el contador de likes de la sala, porque TikTok no avisa de cada toque.
+- Arranque: doble clic en `ABRIR_TODO.bat` (abre juego y puente; la primera vez instala dependencias con npm,
+  hace falta Node.js). Solo el puente: `EMPEZAR_TIKTOK.bat`. Probar sin directo: `node puente/tiktok.js --simular`.
+- Los zombis salen escalonados (mas deprisa cuanto mas grande es la oleada) y la cola tiene tope de 600 para que
+  un diluvio de likes no congele el directo. Los multiplicadores estan en `scripts/sim.gd`
+  (`ZOMBIS_POR_LIKE`, `ZOMBIS_POR_MONEDA`, `MAX_COLA`). Pruebas manuales con teclas: L = 10 likes, M = 30 monedas.
+- Regresion: `tests/donaciones.gd`.
 
 ## Ejecutar
 

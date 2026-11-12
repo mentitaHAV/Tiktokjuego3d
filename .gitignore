@@ -3,4 +3,5 @@ arte/_tmp/
 captura*.png
 datos/historial.json
 eventos.jsonl
+puente/node_modules/
 *.import

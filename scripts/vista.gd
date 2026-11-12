@@ -4,7 +4,7 @@ extends Node2D
 ## Proyeccion ortografica compartida con blender/refugio.py: elevacion 52°, azimut 10°.
 ##   x = coordenada de la simulacion (px, 25 px = 1 m);  Y = profundidad en m;  Z = altura en m.
 ##
-## Teclas: R rosa/zombis | T GG de Tester | G GG de un usuario nuevo | 1-4 velocidad | Espacio pausa
+## Teclas: R rosa (5 zombis) | L 10 likes | M 30 monedas (150 zombis) | T GG de Tester | G GG de un usuario nuevo | 1-4 velocidad | Espacio pausa
 
 const RUTA_EVENTOS := "res://eventos.jsonl"
 const RUTA_HISTORIAL := "res://datos/historial.json"
@@ -49,6 +49,11 @@ func _ready() -> void:
 	ventanas_3d = preload("res://scripts/ventanas_3d.gd").new()
 	add_child(ventanas_3d)
 	sim.cargar_historial(RUTA_HISTORIAL)
+	# Los eventos escritos mientras el juego estaba cerrado no se repiten al abrirlo.
+	if FileAccess.file_exists(RUTA_EVENTOS):
+		var fe := FileAccess.open(RUTA_EVENTOS, FileAccess.READ)
+		if fe:
+			pos_eventos = fe.get_length()
 	guardados = sim.historial.size()
 	gen_vista = sim.gen
 	var pixel: FontFile = load("res://arte/fuentes/PixelifySans.ttf")
@@ -165,6 +170,10 @@ func _unhandled_input(ev: InputEvent) -> void:
 			KEY_R:
 				var n: String = NOMBRES_PRUEBA[randi() % NOMBRES_PRUEBA.size()] + str(randi() % 100)
 				sim.aplicar_regalo(n, "Rose", 1)
+			KEY_L:
+				sim.aplicar_regalo("Fan" + str(randi() % 100), "like", 10)
+			KEY_M:
+				sim.aplicar_regalo("Mecenas" + str(randi() % 100), "Rose", 1, 30)
 			KEY_T:
 				sim.aplicar_regalo("Tester", "GG", 1)
 			KEY_G:
@@ -192,7 +201,7 @@ func _leer_eventos() -> void:
 			continue
 		var d = JSON.parse_string(linea)
 		if d is Dictionary and d.has("usuario") and d.has("regalo"):
-			sim.aplicar_regalo(str(d.usuario), str(d.regalo), int(d.get("cantidad", 1)))
+			sim.aplicar_regalo(str(d.usuario), str(d.regalo), int(d.get("cantidad", 1)), int(d.get("monedas", -1)))
 	pos_eventos = f.get_position()
 
 

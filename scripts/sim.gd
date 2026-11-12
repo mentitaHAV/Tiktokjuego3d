@@ -21,6 +21,9 @@ const MESA_X := 365.0
 const BANCO_X := 640.0
 const VENTANA_DER := 770.0
 const MAX_TIRADORES := 8
+const ZOMBIS_POR_LIKE := 1      # 1 like = 1 zombi
+const ZOMBIS_POR_MONEDA := 5    # cada moneda de un regalo = 5 zombis (30 monedas = 150)
+const MAX_COLA := 600           # tope de zombis en espera para que un diluvio de likes no congele el directo
 const TIRO_RESERVA_X := CASA_X1 - 85.0
 const TABLA_HP := 30.0
 const TABLAS_BARRERA := 5
@@ -61,7 +64,9 @@ const FRASES := {
 var rng := RandomNumberGenerator.new()
 var navegacion := Navegacion.new()
 var next_zombie := 1
-var config := {"regalos": {"Rose": "zombis", "GG": "persona"}, "ambiente": false}
+# GG crea personas; cualquier otro regalo invoca zombis segun sus monedas. Un regalo puede mapearse a "suministros".
+var config := {"regalos": {"GG": "persona"}, "ambiente": false}
+var sig_spawn := 0.0
 
 var gen := 1
 var t := 0.0
@@ -110,6 +115,7 @@ func _reiniciar_mundo() -> void:
 	zombis.clear()
 	barreras.clear()
 	cola_zombis.clear()
+	sig_spawn = 0.0
 	tumbas.clear()
 	textos.clear()
 	disparos.clear()
@@ -176,16 +182,22 @@ func vivos() -> int:
 
 # ---------------------------------------------------------------- eventos de donación
 
-func aplicar_regalo(usuario: String, regalo: String, cantidad: int = 1) -> void:
+func aplicar_regalo(usuario: String, regalo: String, cantidad: int = 1, monedas: int = -1) -> void:
+	# cantidad = veces que se envio (o likes); monedas = valor total en monedas del evento (-1: una por unidad).
 	var clave := regalo.strip_edges().to_lower()
+	if clave in ["like", "likes", "me gusta"]:
+		_invocar_zombis(usuario, maxi(cantidad, 0) * ZOMBIS_POR_LIKE, true)
+		return
 	var canonico := "Rose" if clave in ["rose", "rosa", "rosita"] else ("GG" if clave == "gg" else regalo)
-	var tipo: String = config.regalos.get(canonico, "suministros")
+	var tipo: String = config.regalos.get(canonico, "zombis")
+	if tipo == "zombis":
+		var total_monedas := monedas if monedas >= 0 else maxi(cantidad, 1)
+		_invocar_zombis(usuario, total_monedas * ZOMBIS_POR_MONEDA, false)
+		return
 	for i in range(maxi(cantidad, 1)):
 		match tipo:
 			"persona":
 				_recibir_gg(usuario)
-			"zombis":
-				_recibir_rosa(usuario)
 			_:
 				_suministros(usuario, null)
 
@@ -242,8 +254,13 @@ func _suministros(usuario: String, s: Variant) -> void:
 	aviso("%s: +%d suministros y +%d munición al almacén" % [usuario, 2 + n / 2, 10 + n], 3.5)
 
 
-func _recibir_rosa(usuario: String) -> void:
-	var n := mini(5 + gen, 30)
+func _invocar_zombis(usuario: String, n: int, por_likes: bool) -> void:
+	n = mini(n, MAX_COLA - cola_zombis.size())
+	if n <= 0:
+		return
+	# Cuantos mas zombis, mas deprisa salen; siempre escalonados para que lleguen en oleada.
+	var hueco := 0.4 if n <= 15 else (0.2 if n <= 60 else 0.1)
+	var cuando := maxf(t, sig_spawn)
 	for i in range(n):
 		var r := rng.randf()
 		var tipo := "normal"
@@ -251,8 +268,11 @@ func _recibir_rosa(usuario: String) -> void:
 			tipo = "bruto"
 		elif r < 0.30:
 			tipo = "corredor"
-		cola_zombis.append({"cuando": t + i * 0.45, "lado": 1, "tipo": tipo})
-	aviso("%s invoca %d zombis" % [usuario, n], 4.0)
+		cola_zombis.append({"cuando": cuando, "lado": 1, "tipo": tipo, "invoca": usuario})
+		cuando += hueco
+	sig_spawn = cuando
+	if not por_likes or n >= 10:
+		aviso("%s invoca %d zombis" % [usuario, n], 4.0)
 
 
 func _nuevo_superviviente(nombre: String) -> Dictionary:
