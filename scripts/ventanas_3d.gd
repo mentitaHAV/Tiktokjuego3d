@@ -39,13 +39,13 @@ func _ready() -> void:
 	entorno.background_mode = Environment.BG_CLEAR_COLOR
 	entorno.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	entorno.ambient_light_color = Color("7b8a9b")
-	entorno.ambient_light_energy = 0.22
+	entorno.ambient_light_energy = 0.26
 	ambiente.environment = entorno
 	raiz.add_child(ambiente)
 	var luz := DirectionalLight3D.new()
 	luz.rotation_degrees = Vector3(-42,-28,0)
 	luz.light_color = Color("adc5df")
-	luz.light_energy = 0.7
+	luz.light_energy = 0.8
 	luz.shadow_enabled = true
 	raiz.add_child(luz)
 	var datos: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://arte/casa.json"))
@@ -184,6 +184,7 @@ func limpiar_efectos() -> void:
 	efectos.clear()
 	render_target_update_mode = SubViewport.UPDATE_ONCE
 
+var fogones: Array = []
 var cajas_municion := {}
 var actores := {}
 var luces_actores_creadas := false
@@ -220,9 +221,43 @@ func actualizar_cajas(cajas: Array) -> void:
 		cajas_municion[c.puesto]=caja
 
 
+func actualizar_cocina(sim: Sim, dt: float) -> void:
+	if fogones.is_empty():
+		var hierro := material(Color("363a3b"))
+		var sopa := material(Color("51412b"))
+		var brasa := material(Color("c17c3d"), 0.8)
+		for i in range(4):
+			var x := Sim.COCINA_X + i * 16.0
+			var olla := Node3D.new();raiz.add_child(olla)
+			olla.position=Vector3(x/25.0,1.09,-2.3)
+			var cuerpo := MeshInstance3D.new();var cilindro := CylinderMesh.new()
+			cilindro.top_radius=.17;cilindro.bottom_radius=.15;cilindro.height=.20
+			cilindro.radial_segments=16;cuerpo.mesh=cilindro;cuerpo.material_override=hierro
+			olla.add_child(cuerpo);cuerpo.position.y=.12
+			var interior := MeshInstance3D.new();var liquido := CylinderMesh.new()
+			liquido.top_radius=.145;liquido.bottom_radius=.145;liquido.height=.008;liquido.radial_segments=16
+			interior.mesh=liquido;interior.material_override=sopa;olla.add_child(interior);interior.position.y=.222
+			for lado in [-1,1]:cubo(olla,Vector3(lado*.21,.17,0),Vector3(.09,.04,.07),hierro)
+			var fuego_local := cubo(olla,Vector3(0,.005,0),Vector3(.29,.014,.29),brasa)
+			for m in olla.find_children("*","MeshInstance3D",true,false):m.layers=2
+			var luz := OmniLight3D.new();olla.add_child(luz)
+			luz.position=Vector3(0,.3,.4);luz.light_color=Color("ffc38a")
+			luz.light_cull_mask=2;luz.omni_range=2.2;luz.light_energy=0
+			fogones.append({"x":x,"fuego":fuego_local,"luz":luz,"calor":0.0})
+	for fogon in fogones:
+		var activo := false
+		for h in sim.supervivientes:
+			if h.accion=="cocinar" and h.llego and absf(h.ox-fogon.x)<1:
+				activo=true;break
+		fogon.calor=move_toward(float(fogon.calor),1.0 if activo else 0.0,dt*2.0)
+		fogon.fuego.visible=fogon.calor>.05
+		fogon.luz.light_energy=float(fogon.calor)*.28
+
+
 func actualizar_actores(sim: Sim, dt: float) -> void:
 	luces_actores()
 	actualizar_cajas(sim.cajas)
+	actualizar_cocina(sim,dt)
 	var vivos: Dictionary={}
 	for s in sim.supervivientes:
 		var clave: String="s%d"%s.id

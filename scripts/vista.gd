@@ -37,6 +37,7 @@ var props_meta := {}
 var luces_interiores: Array = []
 var hierba: Array = []
 var parts: Array = []        # particulas de gore en vuelo
+var rotulos_ocupados: Array[Rect2] = []
 var manchas: Array = []      # sangre persistente en el suelo
 var gen_vista := 1
 var rng := RandomNumberGenerator.new()
@@ -335,6 +336,7 @@ func _draw() -> void:
 	draw_texture_rect(ventanas_3d.get_texture(),Rect2(0,0,640,360),false)
 	_vapor_cocina()
 	_efectos()
+	rotulos_ocupados.clear()
 	for humano in sim.supervivientes:
 		_rotulo_humano(humano)
 	var t_pp := tex("primer_plano.png")
@@ -439,6 +441,28 @@ func _superviviente(_s: Dictionary) -> void:
 	pass # Se dibuja como modelo 3D articulado en ventanas_3d.
 
 
+func _detalles() -> bool:
+	return Input.is_key_pressed(KEY_TAB)
+
+
+func _colocar_rotulo(origen: Vector2, ancho: float) -> Vector2:
+	var p := Vector2(clampf(origen.x, ancho / 2.0 + 4.0, 636.0 - ancho / 2.0), maxf(origen.y, 53.0))
+	var direccion := 1.0 if p.y < 110.0 else -1.0
+	for intento in range(9):
+		var rect := Rect2(p - Vector2(ancho / 2.0, 6), Vector2(ancho, 8))
+		var ocupado := false
+		for otro in rotulos_ocupados:
+			if rect.intersects(otro):
+				ocupado = true
+				break
+		if not ocupado:
+			rotulos_ocupados.append(rect)
+			return p
+		p.y += 8 * direccion
+	rotulos_ocupados.append(Rect2(p - Vector2(ancho / 2.0, 6), Vector2(ancho, 8)))
+	return p
+
+
 func _rotulo_humano(s: Dictionary) -> void:
 	var pos := proy(s.x,s.y,s.vy)
 	if s.accion == "dormir" and s.llego:
@@ -446,8 +470,13 @@ func _rotulo_humano(s: Dictionary) -> void:
 	var estrellitas := ""
 	for i in range(mini(s.aportes, 3)):
 		estrellitas += "*"
-	if sim.vivos() <= 15 or s.accion == "disparar" or (get_global_mouse_position() / 2.0).distance_to(pos - Vector2(0, 12)) < 10.0:
-		_texto(String(s.nombre).substr(0, 10) + estrellitas, pos.x, pos.y - 20, Color("ffe9c0"), 5, 45)
+	if sim.vivos() <= 8 or s.accion == "disparar" or (get_global_mouse_position() / 2.0).distance_to(pos - Vector2(0, 12)) < 10.0:
+		var nombre := String(s.nombre).substr(0, 12) + estrellitas
+		var ancho := fuente.get_string_size(nombre, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x / 2.0 + 4.0
+		var etiqueta := _colocar_rotulo(pos + Vector2(0, -20), ancho)
+		if etiqueta.distance_to(pos + Vector2(0, -20)) > 5:
+			draw_line(pos + Vector2(0, -16), etiqueta + Vector2(0, 2), Color(0.6, 0.58, 0.5, 0.35), 1)
+		_texto(nombre, etiqueta.x, etiqueta.y, Color("e5dbc6"), 5, maxf(45, ancho))
 	if (get_global_mouse_position() / 2.0).distance_to(pos - Vector2(0, 12)) < 10.0:
 		var actividad := ""
 		if s.accion == "cocinar": actividad = "cocinando" if s.llego else "a la cocina"
@@ -455,10 +484,10 @@ func _rotulo_humano(s: Dictionary) -> void:
 		elif s.carga.get("n", 0) > 0: actividad = "lleva comida" if s.carga.kind == "crudo" else "lleva munición"
 		elif s.accion == "recoger": actividad = "al almacén"
 		if actividad != "": _texto(actividad, pos.x, pos.y - 13, Color("b8b29b"), 5, 70)
-	if s.hp < 99.0:
+	if s.hp < 70.0 or (s.hp < 99.0 and _detalles()):
 		_rc(pos.x - 6, pos.y - 18, 12, 1, Color("3a0a0a"))
 		_rc(pos.x - 6, pos.y - 18, 12.0 * s.hp / 100.0, 1, Color("e03030"))
-	if s.dice_ttl > 0.0 and s.dice != "" and (sim.vivos() <= 15 or (get_global_mouse_position() / 2.0).distance_to(pos) < 14.0):
+	if s.dice_ttl > 0.0 and s.dice != "" and (_detalles() or (get_global_mouse_position() / 2.0).distance_to(pos) < 14.0):
 		var tw := fuente.get_string_size(s.dice, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x / 2.0
 		_rc(pos.x - tw / 2.0 - 2, pos.y - 44, tw + 4, 9, Color(0.95, 0.92, 0.9, 0.95))
 		_texto(s.dice, pos.x, pos.y - 37, Color("201818"), 6, tw + 20)
@@ -477,7 +506,7 @@ func _vapor_cocina() -> void:
 			continue
 		for i in range(3):
 			var fase := fmod(t_anim * 0.5 + i / 3.0, 1.0)
-			var p := proy(humano.x, humano.y + 0.6, humano.vy + 1.1)
+			var p := proy(humano.ox, 2.3, humano.vy + 1.32)
 			p += Vector2(sin(fase * TAU + i) * 1.5, -fase * 9.0)
 			draw_circle(p.floor(), 0.6 + fase, Color(0.75, 0.75, 0.7, (1.0 - fase) * 0.28))
 
@@ -487,59 +516,57 @@ func _efectos() -> void:
 		if p.has("anterior"):
 			draw_line(Vector2(p.anterior).round(), Vector2(p.p).round(), p.c.darkened(0.25), 1.0)
 		_rc(p.p.x, p.p.y, p.s, p.s, p.c)
-	for e in sim.textos:
+	for e in sim.textos if _detalles() else []:
 		var p := proy(e.x, 2.0, e.y)
 		_texto(e.txt, p.x, p.y, e.col, 6, 70)
 
 
+func _estado_refugio() -> Dictionary:
+	if sim.tuvo_gente and sim.vivos() == 0:
+		return {"texto":"REFUGIO CAÍDO", "color":Color("d38270")}
+	for z in sim.zombis:
+		if z.hp > 0 and z.dentro:
+			return {"texto":"BRECHA EN LA CASA", "color":Color("db8971")}
+	if not sim.zombis.is_empty() or not sim.cola_zombis.is_empty():
+		return {"texto":"BAJO ATAQUE", "color":Color("d9b478")}
+	return {"texto":"EN CALMA", "color":Color("b3b9a0")}
+
+
 func _hud() -> void:
 	var hh := int(sim.hora() * 24.0 + 6.0) % 24
-	draw_rect(Rect2(0, 0, 640, 42), Color(0, 0, 0, 0.6))
-	var linea := "GEN %d  DIA %d  %02d:00   HUMANOS %d/50   ZOMBIS %d" % [sim.gen, sim.dia(), hh, sim.vivos(), sim.zombis.size()]
-	_texto(linea, 320, 8, Color("f0e0d8"), 7, 600)
-	# Indicadores del almacen: suministros (comida sin cocinar) y municion, con lo que hay en cajas y cocina.
+	var estado := _estado_refugio()
+	draw_rect(Rect2(0, 0, 640, 42), Color(0.025, 0.035, 0.04, 0.92))
+	_rc(0, 41, 640, 1, Color(0.55, 0.50, 0.39, 0.35))
+	_texto("DÍA %d · %02d:00" % [sim.dia(), hh], 88, 13, Color("c7bda9"), 7, 160)
+	_texto(estado.texto, 320, 13, estado.color, 7, 235)
+	_texto("%d HUMANOS · %d ZOMBIS" % [sim.vivos(), sim.zombis.size()], 537, 13, Color("ddd4c2"), 7, 190)
 	var en_cajas := 0
-	for cj in sim.cajas:
-		en_cajas += cj.mun
-	var max_cajas: int = sim.cajas.size() * Sim.CAJA_MAX
-	_indicador(8.0, 21.0, "SUMINISTROS", sim.alm.crudo, 120, Color("d9b45a"), "cocina %d" % sim.stock.crudo)
-	_indicador(168.0, 21.0, "MUNICIÓN", sim.alm.municion, 300, Color("9fc060"), "cajas %d/%d" % [en_cajas, max_cajas])
-	var r := "COMIDA %d/%d   MADERA %d   VENTANAS %d/8" % [sim.stock.comida, sim.objetivo_comida(), sim.stock.madera, sim._contar("disparar")]
-	_texto(r, 495, 29, Color("ffd9a0"), 6, 280)
-	var vacias := 0
-	for cj in sim.cajas:
-		if cj.mun <= 0:
-			vacias += 1
+	for cj in sim.cajas: en_cajas += cj.mun
+	_dato_stream(8, "COMIDA", sim.stock.comida, "/%d" % sim.objetivo_comida(), Color("d5bc83"), sim.stock.comida < sim.vivos())
+	_dato_stream(168, "SUMINISTROS", sim.alm.crudo, "", Color("c9b18b"), sim.alm.crudo + sim.stock.crudo == 0)
+	_dato_stream(328, "MUNICIÓN", sim.alm.municion, "", Color("b2bbaa"), sim.alm.municion == 0)
+	_dato_stream(488, "EN CAJAS", en_cajas, "", Color("b2bbaa"), en_cajas < 30)
 	var aviso: String = sim.aviso_municion()
 	if aviso != "":
-		_texto(aviso, 320, 50, Color("ff5040") if aviso == "¡SIN MUNICIÓN!" else Color("ffbc64"), 8, 240)
-	elif vacias > 0:
-		_texto("%d cajas vacias" % vacias, 320, 50, Color("ff9a60", 0.7 + 0.3 * sin(t_real * 5.0)), 6, 200)
-	elif sim.zombis.is_empty() and sim.cola_zombis.is_empty():
-		var rutina := "EN CALMA · COCINA %d · HUERTO %d · REPARTO %d" % [sim._contar("cocinar"), sim._contar("cultivar"), sim._contar("recoger") + sim._contar("entregar")]
-		_texto(rutina, 320, 50, Color("b9bdad"), 6, 400)
-	if sim.historial.size() > 0:
-		var mejor := 0.0
-		for h in sim.historial:
-			mejor = maxf(mejor, float(h.dias))
-		_texto("RECORD %.1fd" % mejor, 585, 9, Color("c0a0a0"), 6, 60)
-	var y := 62.0
-	for a in sim.avisos:
-		_texto(a.txt, 320, y, Color(1, 0.55, 0.45, clampf(a.ttl, 0.0, 1.0)), 8, 280)
-		y += 10.0
+		_texto(aviso, 320, 55, Color("dc9a79"), 7, 320)
+	elif not sim.avisos.is_empty():
+		var ultimo: Dictionary = sim.avisos.back()
+		_texto(ultimo.txt, 320, 55, Color(0.88, 0.81, 0.66, clampf(ultimo.ttl, 0, 1)), 6, 590)
+	if _detalles():
+		draw_rect(Rect2(10, 65, 245, 47), Color(0.025, 0.035, 0.04, 0.94))
+		_texto("COCINA %d · HUERTO %d · REPARTO %d" % [sim._contar("cocinar"), sim._contar("cultivar"), sim._contar("recoger") + sim._contar("entregar")], 132, 78, Color("c4bda9"), 6, 235)
+		_texto("MADERA %d · CRUDO EN COCINA %d" % [sim.stock.madera, sim.stock.crudo], 132, 92, Color("c4bda9"), 6, 235)
+		_texto("GENERACIÓN %d · VENTANAS %d/8" % [sim.gen, sim._contar("disparar")], 132, 105, Color("9d9d90"), 6, 235)
 	if vel_juego > 1:
-		_texto("x%d" % vel_juego, 14, 350, Color.WHITE, 6, 24)
+		_texto("x%d" % vel_juego, 14, 350, Color("c7bda9"), 6, 24)
 	if pausa:
 		_texto("PAUSA", 320, 180, Color.WHITE, 10, 80)
+		_texto("TAB · detalles de la casa", 320, 195, Color("c7bda9"), 6, 220)
 
 
-func _indicador(x: float, y: float, titulo: String, valor: int, tope: int, col: Color, extra: String) -> void:
-	_rc(x, y + 2, 150, 4, Color(0.2, 0.2, 0.2, 0.9))
-	var f := clampf(float(valor) / float(tope), 0.0, 1.0)
-	var c := col if f > 0.2 else Color("e05a40")
-	_rc(x, y + 2, 150.0 * f, 4, c)
-	_texto("%s · %d" % [titulo, valor], x + 75, y - 4, Color("f0e6d0"), 5, 190)
-	_texto(extra, x + 75, y + 13, Color("b8a890"), 5, 190)
+func _dato_stream(x: float, titulo: String, valor: int, extra: String, tono: Color, bajo: bool) -> void:
+	_texto("%s  %d%s" % [titulo, valor, extra], x + 72, 32, Color("d99b7a") if bajo else tono, 6, 148)
+	if x > 8: _rc(x - 8, 23, 1, 11, Color(0.5, 0.48, 0.42, 0.22))
 
 
 func _prisma(x0: float, x1: float, y0: float, y1: float, z0: float, z1: float, col: Color) -> void:

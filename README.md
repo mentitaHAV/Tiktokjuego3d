@@ -230,8 +230,18 @@ Comprobaciones: `tests/comportamiento.gd` y `tests/efectos.gd`, además de las p
 
 Los residentes preparan seis raciones por persona, reponen primero la despensa cuando hace falta cocinar y atienden el huerto para mantener reservas. Los puestos de cocina son exclusivos: un cocinero para hasta seis residentes, hasta cuatro en una casa llena. Las tareas se completan antes de elegir la siguiente.
 
-El reparto se ve con cajas sostenidas con ambas manos; al cocinar usan utensilios y aparece vapor. El indicador muestra comida preparada frente al objetivo y cuántas personas cocinan, cultivan o reparten durante la calma. Las cajas de munición son modelos 3D oscuros apoyados en cada planta, sin barras flotantes verdes. Solo hay barricadas en las dos ventanas de planta baja.
+El reparto se ve con cajas sostenidas con ambas manos; al cocinar usan utensilios y aparece vapor. La cabecera muestra comida preparada frente al objetivo; con Tab se consulta cuántas personas cocinan, cultivan o reparten. Las cajas de munición son modelos 3D oscuros apoyados en cada planta, sin barras flotantes verdes. Solo hay barricadas en las dos ventanas de planta baja.
 
 ![Casa en calma](docs/vida-casa.jpg)
 
 Regresión: `tests/vida_casa.gd` simula cuatro minutos sin zombis con cinco residentes y comprueba cocina, huerto, transporte, reservas y supervivencia.
+
+### Presentación para el directo
+
+Cabecera compacta con día, estado de la casa, residentes y zombis; una segunda fila muestra comida preparada, suministros en almacén, munición en almacén y balas repartidas a las cajas. Las alertas distinguen calma, ataque, brecha y final de partida. Solo se muestra un aviso a la vez.
+
+Mantén **Tab** para ver tareas, madera, despensa, generación y puestos de tiro, además de los mensajes pequeños de actividad. Los bocadillos aparecen al pasar el cursor o consultar detalles. Los nombres cercanos se separan para no superponerse y la barra de salud se reserva para heridas importantes.
+
+Los fogones tienen ollas 3D sobre las encimeras existentes; el calor y la luz cálida se encienden durante la cocina y se apagan suavemente al terminar.
+
+![Presentación para el directo](docs/pulido-stream.jpg)
