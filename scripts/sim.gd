@@ -442,7 +442,7 @@ func _zombi_cerca_casa(rango: float) -> Variant:
 	var mejor = null
 	var md := 1e9
 	for z in zombis:
-		if z.dentro:
+		if z.dentro or z.hp <= 0.0:
 			continue
 		var d: float = z.x - CASA_X1
 		if d < rango and d < md:
@@ -455,9 +455,9 @@ func _zombi_dentro_cercano(s: Dictionary) -> Variant:
 	var mejor = null
 	var md := 1e9
 	for z in zombis:
-		if not z.dentro:
+		if not z.dentro or z.hp <= 0.0 or z.f != s.f:
 			continue
-		var d: float = absf(z.x - s.x) + 50.0 * absf(z.f - s.f)
+		var d: float = Vector2(z.x - s.x, (z.y - s.y) * 25.0).length()
 		if d < md:
 			md = d
 			mejor = z
@@ -519,10 +519,32 @@ func _decidir(s: Dictionary) -> void:
 
 	var zd = _zombi_dentro_cercano(s)
 	if zd != null:
-		var ox: float = zd.x
+		# Una brecha tiene prioridad sobre reparar, cocinar o transportar.
+		var distancia: float = Vector2(zd.x - s.x, (zd.y - s.y) * 25.0).length()
+		var ox: float = s.x
+		var oy: float = s.y
 		if hay_municion:
-			ox = zd.x - signf(zd.x - s.x) * 20.0
-		c.append([100.0 * s.val, {"tipo": "luchar", "x": ox, "f": zd.f}])
+			if distancia > 130.0 or not _linea_tiro_libre(s, zd):
+				ox = zd.x - signf(zd.x - s.x) * 85.0
+				oy = zd.y
+			elif distancia < 32.0:
+				ox = s.x - signf(zd.x - s.x) * 38.0
+		else:
+			ox = zd.x - signf(zd.x - s.x) * 12.0
+			oy = zd.y
+		ox = clampf(ox, CASA_X0 + 10.0, CASA_X1 - 14.0)
+		if not navegacion.transitable(ox / 25.0, oy, s.f):
+			ox = s.x
+			oy = s.y
+		_comenzar(s, {"tipo":"luchar", "x":ox, "y":oy, "f":s.f})
+		return
+	if amen == null and s.accion == "disparar":
+		_soltar(s)
+		s.accion = ""
+		s.recarga = 0.0
+	# Terminar una tarea breve o su desplazamiento evita cambiar de rumbo a cada decision.
+	if amen == null and s.accion not in ["", "disparar", "luchar", "volver"] and s.hambre < 90.0 and s.energia > 8.0:
+		return
 
 	if amen != null:
 		if fuera:
@@ -580,15 +602,23 @@ func _decidir(s: Dictionary) -> void:
 				u += 14.0
 			c.append([(58.0 + u) * s.tr, {"tipo": "recoger", "x": ALM_ACCESO_X, "y": ALM_ACCESO_Y, "f": 0, "dur": 1.2, "ref": plan.dest}])
 
-	var px := rng.randf_range(CASA_X0 + 30.0, CASA_X1 - 30.0)
-	c.append([8.0, {"tipo": "pasear", "x": px, "f": rng.randi() % PISO_Y.size(), "dur": rng.randf_range(1.5, 4.0)}])
+	var px: float = s.x
+	var pf: int = s.f
+	for intento in range(24):
+		var candidato := rng.randf_range(CASA_X0 + 30.0, CASA_X1 - 30.0)
+		var planta := rng.randi() % PISO_Y.size()
+		if navegacion.transitable(candidato / 25.0, PASILLO_Y, planta):
+			px = candidato
+			pf = planta
+			break
+	c.append([8.0, {"tipo": "pasear", "x": px, "f": pf, "dur": rng.randf_range(1.5, 4.0)}])
 
 	var mejor = null
 	var mp := -1e9
 	for par in c:
 		var p: float = par[0] + rng.randf() * 6.0
 		if par[1].tipo == s.accion:
-			p += 8.0
+			p += 20.0
 		if p > mp:
 			mp = p
 			mejor = par[1]
@@ -635,6 +665,9 @@ func _perder_carga(s: Dictionary) -> void:
 func _caja_de(s: Dictionary) -> Variant:
 	if s.accion == "disparar" and s.llego and s.puesto >= 0 and s.puesto < cajas.size():
 		return cajas[s.puesto]
+	for cj in cajas:
+		if cj.f == s.f and Vector2(s.x - cj.ax, (s.y - cj.ay) * 25.0).length() < 32.0:
+			return cj
 	return null
 
 
@@ -716,6 +749,9 @@ func _comenzar(s: Dictionary, a: Dictionary) -> void:
 	if a.tipo == s.accion and is_same(ref_nuevo, s.ref):
 		# misma acción y mismo objetivo: solo se ajusta el destino
 		if a.tipo in ["luchar", "disparar", "volver"]:
+			if Vector2(s.ox - a.x, (s.oy - a.get("y", s.oy)) * 25.0).length() > 8.0 or s.of != a.f:
+				s.erase("ruta_destino")
+				s.llego = false
 			s.ox = a.x
 			s.of = a.f
 			s.lado = a.get("lado", 0)
@@ -724,6 +760,7 @@ func _comenzar(s: Dictionary, a: Dictionary) -> void:
 		return
 	_soltar(s)
 	s.trab = 0.0
+	s.sin_progreso = 0.0
 	if rng.randf() < 0.18:
 		_decir(s, a.tipo)
 	s.cama_id = a.get("cama",-1)
@@ -837,6 +874,14 @@ func _avanzar_escalera(c: Dictionary, dt: float) -> void:
 
 func _actuar(s: Dictionary, dt: float) -> void:
 	s.llego = _mover(s, s.ox, s.of, dt)
+	if not s.llego and not s.camina and s.escalera.is_empty():
+		s.sin_progreso = s.get("sin_progreso", 0.0) + dt
+		if s.sin_progreso > 2.5:
+			_soltar(s)
+			s.accion = ""
+			s.cd_dec = 0.0
+	else:
+		s.sin_progreso = 0.0
 	match s.accion:
 		"comer", "cocinar", "construir", "reparar", "cultivar", "talar", "pasear", "recoger", "entregar":
 			if s.llego:
@@ -909,6 +954,17 @@ func _terminar(s: Dictionary) -> void:
 	s.cd_dec = 0.0
 
 
+func _linea_tiro_libre(s: Dictionary, z: Dictionary) -> bool:
+	var a := Vector2(s.x / 25.0, s.y)
+	var b := Vector2(z.x / 25.0, z.y)
+	var pasos := maxi(1, ceili(a.distance_to(b) / 0.2))
+	for i in range(1, pasos):
+		var p := a.lerp(b, float(i) / pasos)
+		if not navegacion.transitable(p.x, p.y, s.f):
+			return false
+	return true
+
+
 func _reflejo(s: Dictionary) -> void:
 	if s.cd_ataque > 0.0 or s.recarga > 0.0 or not s.escalera.is_empty() or s.accion == "dormir":
 		return
@@ -923,11 +979,11 @@ func _reflejo(s: Dictionary) -> void:
 		var d := 1e9
 		if z.dentro:
 			if z.f == s.f:
-				d = absf(z.x - s.x)
-				if d > 45.0:
+				d = Vector2(z.x - s.x, (z.y - s.y) * 25.0).length()
+				if d > 240.0 or not _linea_tiro_libre(s, z):
 					d = 1e9
 		else:
-			if en_ventana:
+			if en_ventana or (afuera and z.f == s.f):
 				d = absf(z.x - s.x)
 				if d > rango_v:
 					d = 1e9
@@ -959,7 +1015,7 @@ func _reflejo(s: Dictionary) -> void:
 		fx.append(tiro.duplicate())
 		if rng.randf() < prob:
 			_dañar_zombi(objetivo, arma.dano * rng.randf_range(0.85, 1.15) * (1.0 + (s.nivel_arma - 1) * 0.2), s)
-	elif md < 18.0 and objetivo.f == s.f:
+	elif md < 18.0 and objetivo.f == s.f and objetivo.dentro:
 		s.cd_ataque = 0.7
 		s.flash = 0.1
 		s.dir = 1 if objetivo.x > s.x else -1

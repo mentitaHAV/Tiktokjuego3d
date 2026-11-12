@@ -219,3 +219,9 @@ camas del atico, usando los mismos modelos y recorridos que la partida.
 Tipografía Pixelify Sans incluida bajo licencia OFL, con soporte para español y fuentes de respaldo para nombres de usuarios. Las ocho cajas dejan libre el acceso junto a las ventanas y los residentes las rodean al caminar. Los suministros deben cocinarse antes de comer; los avisos distinguen munición baja, agotada y pendiente de reparto.
 
 ![Almacén e interfaz pixel art](docs/almacen-tipografia.png)
+
+### Comportamiento y defensa interior
+
+Los residentes abandonan las ventanas al terminar la amenaza y mantienen su tarea hasta completarla, salvo necesidades urgentes o combate. Una invasión en su planta interrumpe el trabajo: disparan desde distancia, retroceden ante un enemigo cercano y recargan usando las cajas próximas. Los disparos interiores comprueban obstáculos. Se eliminaron los fragmentos verdes y morados de las muertes; quedan salpicaduras oscuras limitadas.
+
+Comprobaciones: `tests/comportamiento.gd` y `tests/efectos.gd`, además de las pruebas de armas, almacén, navegación e interiores.

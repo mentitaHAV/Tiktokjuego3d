@@ -208,46 +208,31 @@ func _consumir_fx() -> void:
 
 func _gore(e: Dictionary) -> void:
 	var pos := proy(e.x, e.y, e.z)
-	var suelo_y: float = proy(e.x, e.y, 0.0).y
+	var piso: float = floorf(float(e.z) / 4.8) * 4.8
+	var suelo_y: float = proy(e.x, e.y, piso).y
 	var vdir := float(e.dir)                 # dir de la simulacion +1 = hacia la izquierda de la pantalla
 	var mata: bool = e.get("mata", false) or e.k == "muerte_s"
-	var n := 26 if mata else 7
+	var n := 10 if mata else 3
 	var colores: Array = [Color("8b714a"), Color("bda077"), Color("5c543c")] if e.k == "tabla" else SANGRE
 	for i in range(n):
 		parts.append({
 			"p": pos + Vector2(rng.randf_range(-2, 2), rng.randf_range(-3, 3)),
 			"anterior": pos,
-			"v": Vector2(vdir * rng.randf_range(10, 90) + rng.randf_range(-20, 20), rng.randf_range(-90, -10)),
+			"v": Vector2(vdir * rng.randf_range(8, 32) + rng.randf_range(-20, 20), rng.randf_range(-35, -8)),
 			"suelo": suelo_y + rng.randf_range(-2.0, 3.0), "c": colores[rng.randi() % colores.size()],
 			"s": 1 + rng.randi() % 2, "trozo": false,
 		})
-	while parts.size() > 700:
+	while parts.size() > 180:
 		parts.pop_front()
 	if mata:
-		var piel := Color("6fae5a")
-		var ropa := Color("5a4a6a")
-		if e.k == "muerte_s":
-			piel = Color("f1c9a0")
-			ropa = Color("c0392b")
-		else:
-			if e.get("tipo", "") == "bruto":
-				piel = Color("4f8a46")
-			elif e.get("tipo", "") == "corredor":
-				piel = Color("9ab85a")
-		for c in [piel, piel, ropa, ropa, Color("8a0f0f")]:
-			parts.append({
-				"p": pos + Vector2(rng.randf_range(-3, 3), rng.randf_range(-4, 2)),
-				"v": Vector2(vdir * rng.randf_range(10, 60) + rng.randf_range(-30, 30), rng.randf_range(-110, -40)),
-				"suelo": suelo_y + rng.randf_range(0.0, 3.0), "c": c, "s": 3, "trozo": true,
-			})
 		# charco bajo el cuerpo
-		for i in range(14):
-			manchas.append([suelo_y + rng.randf_range(-1.0, 3.0), proy(e.x, e.y, 0.0).x + rng.randf_range(-9, 9), 1 + rng.randi() % 3, 1 + rng.randi() % 2, SANGRE[rng.randi() % SANGRE.size()]])
+		for i in range(6):
+			manchas.append([suelo_y + rng.randf_range(-1.0, 3.0), proy(e.x, e.y, 0.0).x + rng.randf_range(-5, 5), 1 + rng.randi() % 3, 1 + rng.randi() % 2, SANGRE[rng.randi() % SANGRE.size()]])
 		_limitar_manchas()
 
 
 func _limitar_manchas() -> void:
-	while manchas.size() > 1400:
+	while manchas.size() > 450:
 		manchas.pop_front()
 
 
@@ -484,8 +469,6 @@ func _efectos() -> void:
 		if p.has("anterior"):
 			draw_line(Vector2(p.anterior).round(), Vector2(p.p).round(), p.c.darkened(0.25), 1.0)
 		_rc(p.p.x, p.p.y, p.s, p.s, p.c)
-		if p.trozo:
-			_rc(p.p.x, p.p.y, 1, 1, Color("e3b6a4"))
 	for e in sim.textos:
 		var p := proy(e.x, 2.0, e.y)
 		_texto(e.txt, p.x, p.y, e.col, 6, 70)
