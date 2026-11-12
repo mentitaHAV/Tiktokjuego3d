@@ -222,9 +222,9 @@ Tipografía Pixelify Sans incluida bajo licencia OFL, con soporte para español 
 
 ### Comportamiento y defensa interior
 
-Los residentes abandonan las ventanas al terminar la amenaza y mantienen su tarea hasta completarla, salvo necesidades urgentes o combate. Una invasión en su planta interrumpe el trabajo: disparan desde distancia, retroceden ante un enemigo cercano y recargan usando las cajas próximas. Los disparos interiores comprueban obstáculos. Se eliminaron los fragmentos verdes y morados de las muertes; quedan salpicaduras oscuras limitadas.
+Los residentes abandonan las ventanas al terminar la amenaza y mantienen su tarea hasta completarla, salvo necesidades urgentes o combate. Una invasión en su planta interrumpe el trabajo: disparan desde distancia, retroceden ante un enemigo cercano y recargan usando las cajas próximas. Los disparos interiores comprueban obstáculos. Cuando los zombis presionan las barricadas, ambos defensores de planta baja retroceden unos tres metros y disparan desde dentro. Las cajas de esa planta están detrás para poder recargar allí; no se obtiene munición de una caja lejana. Nadie repara junto a los atacantes: esperan cuatro segundos de seguridad tras despejar las tablas. Se eliminaron los fragmentos verdes y morados de las muertes; quedan salpicaduras oscuras limitadas.
 
-Comprobaciones: `tests/comportamiento.gd` y `tests/efectos.gd`, además de las pruebas de armas, almacén, navegación e interiores.
+Comprobaciones: `tests/comportamiento.gd`, `tests/retirada_barricada.gd` y `tests/efectos.gd`, además de las pruebas de armas, almacén, navegación e interiores.
 
 ### Vida en la casa durante la calma
 

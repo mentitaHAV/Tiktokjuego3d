@@ -21,6 +21,7 @@ const MESA_X := 365.0
 const BANCO_X := 640.0
 const VENTANA_DER := 770.0
 const MAX_TIRADORES := 8
+const TIRO_RESERVA_X := CASA_X1 - 85.0
 const TABLA_HP := 30.0
 const TABLAS_BARRERA := 5
 # Almacen del oeste (junto a los huertos), cajas de municion junto a las ventanas y despensa de cocina.
@@ -118,7 +119,7 @@ func _reiniciar_mundo() -> void:
 	cocina_ref.entrante = 0
 	cajas = []
 	for pv in puestos_ventana():
-		cajas.append({"puesto": pv.puesto, "x": CASA_X1 - 18.0, "y": pv.y + 0.7, "ax": CASA_X1 - 25.0, "ay": pv.y + 0.7, "f": pv.f, "mun": 40, "max": CAJA_MAX, "entrante": 0})
+		cajas.append({"puesto": pv.puesto, "x": CASA_X1 - (90.0 if pv.f == 0 else 18.0), "y": pv.y + 0.7, "ax": CASA_X1 - (101.0 if pv.f == 0 else 25.0), "ay": pv.y + 0.7, "f": pv.f, "mun": 40, "max": CAJA_MAX, "entrante": 0})
 	navegacion.actualizar_cajas(cajas)
 	puertas = []
 	for puesto in puestos_ventana():
@@ -401,6 +402,18 @@ func spawn_zombi(lado: int, tipo: String) -> void:
 # ---------------------------------------------------------------- superviviente
 
 func _vida(s: Dictionary, dt: float) -> void:
+	# Reaccion inmediata ante manos en las tablas; nadie repara ni se queda pegado al hueco.
+	if s.f == 0 and s.escalera.is_empty() and s.x > TIRO_RESERVA_X + 8.0 and s.x < CASA_X1:
+		for b in barreras:
+			if absf(s.y - b.y) < 1.1 and (_ventana_peligrosa(0) or _ventana_peligrosa(1)):
+				if s.accion == "disparar" and s.puesto >= 0:
+					var seguro := _puesto_ventana(s)
+					if not seguro.is_empty(): _comenzar(s, seguro)
+					else: _comenzar(s, {"tipo":"volver", "x":TIRO_RESERVA_X, "y":b.y, "f":0})
+				else:
+					_comenzar(s, {"tipo":"volver", "x":TIRO_RESERVA_X, "y":b.y, "f":0})
+				s.cd_dec = maxf(s.cd_dec, 0.5)
+				break
 	s.cd_ataque -= dt
 	s.tiempo_tiro += dt
 	s.retroceso = maxf(0.0, s.retroceso - dt * 7.0)
@@ -488,6 +501,7 @@ func _dañado(trabajador: Variant = null) -> Variant:
 			mr = r
 			mejor = p
 	for b in barreras:
+		if _ventana_peligrosa(0) or _ventana_peligrosa(1):continue
 		var r: float = b.hp / b.max
 		if r < mr and not _reservado(b, trabajador):
 			mr = r
@@ -688,7 +702,9 @@ func _perder_carga(s: Dictionary) -> void:
 
 func _caja_de(s: Dictionary) -> Variant:
 	if s.accion == "disparar" and s.llego and s.puesto >= 0 and s.puesto < cajas.size():
-		return cajas[s.puesto]
+		var c: Dictionary = cajas[s.puesto]
+		if Vector2(s.x - c.ax, (s.y - c.ay) * 25.0).length() < 32.0:
+			return c
 	for cj in cajas:
 		if cj.f == s.f and Vector2(s.x - cj.ax, (s.y - cj.ay) * 25.0).length() < 32.0:
 			return cj
@@ -750,8 +766,21 @@ func puestos_ventana() -> Array:
 	return puestos
 
 
+func _ventana_peligrosa(puesto: int) -> bool:
+	if puesto < 0 or puesto >= barreras.size():return false
+	var b: Dictionary = barreras[puesto]
+	for z in zombis:
+		if z.hp > 0 and not z.dentro and z.entrada == puesto and z.x >= b.x - 6.0 and z.x < b.x + 55.0:
+			b.peligro_hasta = t + 4.0
+			return true
+	return float(b.get("peligro_hasta", -1.0)) > t
+
+
 func _puesto_ventana(s: Dictionary) -> Dictionary:
 	var puestos := puestos_ventana()
+	for p in puestos:
+		if p.f == 0 and (_ventana_peligrosa(0) or _ventana_peligrosa(1) or s.cartuchos <= 0):
+			p.x = TIRO_RESERVA_X
 	if s.accion == "disparar" and s.puesto >= 0 and s.puesto < MAX_TIRADORES:
 		if s.cartuchos > 0 or cajas[s.puesto].mun > 0:
 			return puestos[s.puesto]

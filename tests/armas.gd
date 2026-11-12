@@ -20,7 +20,9 @@ func _init() -> void:
 	combate.aplicar_regalo("Tirador", "GG")
 	var s: Dictionary = combate.supervivientes[0]
 	s.modelo_arma = "AK"; s.arma = "AK"; s.cartuchos = 1; s.cd_dec = 999
-	combate._comenzar(s, combate.puestos_ventana()[0])
+	var posicion: Dictionary = combate.puestos_ventana()[0]
+	posicion.x = Sim.TIRO_RESERVA_X
+	combate._comenzar(s, posicion)
 	s.x = s.ox; s.f = s.of; s.y = s.oy; s.vy = Sim.PISO_Y[s.f]
 	s.llego = true; s.camina = false
 	combate.spawn_zombi(1, "bruto")
