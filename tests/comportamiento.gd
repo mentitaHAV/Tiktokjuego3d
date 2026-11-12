@@ -11,7 +11,13 @@ func _init() -> void:
 	sim._comenzar(h, sim.puestos_ventana()[0])
 	h.x=h.ox; h.y=h.oy; h.llego=true
 	sim._decidir(h)
-	comprobar(h.accion != "disparar" and h.puesto == -1, "No abandona una ventana sin enemigos")
+	comprobar(h.accion == "disparar" and h.puesto == 0, "El unico vigilante abandona la ventana")
+	sim.aplicar_regalo("Luis", "GG")
+	var relevo: Dictionary = sim.supervivientes[1]
+	sim._comenzar(relevo, sim.puestos_ventana()[1])
+	relevo.x = relevo.ox; relevo.y = relevo.oy; relevo.llego = true
+	sim._decidir(h)
+	comprobar(h.accion != "disparar" and h.puesto == -1, "No abandona una ventana sin enemigos cuando ya hay otro vigilando")
 	sim._comenzar(h, {"tipo":"cocinar", "x":Sim.COCINA_X, "f":0, "dur":5.0})
 	var destino: float = h.ox
 	for i in range(15): sim._decidir(h)

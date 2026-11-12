@@ -93,6 +93,7 @@ var registrados := {} # Una identidad por generacion, incluso tras morir.
 var fin_timer := -1.0
 var sig_ambiente := 70.0
 var next_id := 1
+var guardia_t := 0.0
 
 
 func _init(semilla: int = 0) -> void:
@@ -301,6 +302,10 @@ func step(dt: float) -> void:
 	t += dt
 	_procesar_cola()
 	_ambiente()
+	guardia_t -= dt
+	if guardia_t <= 0.0:
+		guardia_t = 0.5
+		_asegurar_guardia()
 	for s in supervivientes:
 		if s.hp > 0.0:
 			_vida(s, dt)
@@ -553,6 +558,12 @@ func _decidir(s: Dictionary) -> void:
 		_comenzar(s, {"tipo":"luchar", "x":ox, "y":oy, "f":s.f})
 		return
 	if amen == null and s.accion == "disparar":
+		# Vigilancia permanente: nadie deja la ventana si con eso queda sin guardia; el cansado espera su relevo.
+		var puesto_g := _puesto_ventana(s)
+		var critico: bool = s.hambre >= 92.0 or s.energia < 8.0
+		if not puesto_g.is_empty() and _guardias_listas(s) < guardias_minimas() and not critico:
+			_comenzar(s, puesto_g)
+			return
 		_soltar(s)
 		s.accion = ""
 		s.recarga = 0.0
@@ -764,6 +775,66 @@ func puestos_ventana() -> Array:
 		for i in range(2):
 			puestos.append({"tipo": "disparar", "x": CASA_X1-12.0, "y": 1.1 + i * 2.1, "f": piso, "lado": 1, "puesto": puestos.size()})
 	return puestos
+
+
+# ---------------------------------------------------------------- vigilancia permanente
+
+func guardias_minimas() -> int:
+	return 1 + vivos() / 20
+
+
+func _agotado(o: Dictionary) -> bool:
+	# Cansado: pide relevo, pero sigue en la ventana hasta que llegue otro.
+	return o.energia < 35.0 or o.hambre >= 70.0 or o.hp <= 20.0
+
+
+func _guardias_listas(excluir: Variant = null) -> int:
+	var n := 0
+	for o in supervivientes:
+		if not is_same(o, excluir) and o.accion == "disparar" and o.llego and not _agotado(o):
+			n += 1
+	return n
+
+
+func _guardias_asignadas() -> int:
+	var n := 0
+	for o in supervivientes:
+		if o.accion == "disparar" and not _agotado(o):
+			n += 1
+	return n
+
+
+func guardia_cubierta() -> bool:
+	for o in supervivientes:
+		if o.accion == "disparar" and o.llego and o.hp > 0.0:
+			return true
+	return false
+
+
+func _asegurar_guardia() -> void:
+	if supervivientes.is_empty() or _guardias_asignadas() >= guardias_minimas():
+		return
+	var mejor = null
+	var md := 1e9
+	for estricto in [true]:
+		for o in supervivientes:
+			if _agotado(o) or o.accion in ["luchar", "disparar", "volver", "entregar"] or not o.escalera.is_empty():
+				continue
+			var coste: float = absf(o.x - (CASA_X1 - 12.0)) / 25.0 + absf(o.f) * 4.0
+			if o.accion in ["", "pasear"]:
+				coste -= 30.0
+			if coste < md:
+				md = coste
+				mejor = o
+		if mejor != null:
+			break
+	if mejor == null:
+		return
+	var puesto := _puesto_ventana(mejor)
+	if puesto.is_empty():
+		return
+	_comenzar(mejor, puesto)
+	mejor.cd_dec = 0.6
 
 
 func _ventana_peligrosa(puesto: int) -> bool:

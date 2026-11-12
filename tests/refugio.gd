@@ -78,6 +78,7 @@ func capacidad_y_ventanas() -> void:
 func barricadas_y_huerto() -> void:
 	var sim := Sim.new(31)
 	sim.aplicar_regalo("Carpintero","GG")
+	sim.aplicar_regalo("Vigilante","GG")  # alguien vigila siempre; el carpintero repara
 	var s: Dictionary = sim.supervivientes[0]
 	comprobar(sim.barreras.size()==2 and sim.puertas.is_empty(),"Quedan barricadas fuera de las ventanas")
 	for defensa in sim.barreras:
@@ -91,7 +92,9 @@ func barricadas_y_huerto() -> void:
 		if s.accion=="":break
 	comprobar(defensa.hp==30 and sim.stock.madera==madera-1,"No reconstruye una tabla")
 	comprobar(s.x<Sim.CASA_X1,"Repara desde fuera de la casa")
-	for i in range(150):sim.step(0.1)
+	for i in range(600):
+		sim.step(0.1)
+		if defensa.hp>=150:break
 	comprobar(defensa.hp==150 and sim.stock.madera==madera-5,"La IA no reconstruye la ventana completa")
 	sim.spawn_zombi(1,"bruto")
 	var z: Dictionary = sim.zombis[0]

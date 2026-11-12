@@ -70,6 +70,13 @@ usuario de TikTok en `usuario`, conservando su nombre para el personaje.
   cocinarlos para que se conviertan en comida. La cosecha del huerto tambien va al almacen.
 - La madera sigue siendo global (taller). Regresion: `tests/almacen.gd`.
 
+## Vigilancia permanente
+
+Siempre hay al menos un humano de guardia **en una ventana** (uno mas por cada 20 residentes), de dia y de
+noche, haya zombis o no. Si el vigilante se cansa (poca energia o hambre) pide relevo y sigue en su puesto
+hasta que otro llega; si muere o se va a luchar dentro, otro ocupa su sitio. Solo abandona la ventana
+sin relevo en una emergencia (hambre extrema o agotamiento). Regresion: `tests/vigilancia.gd`.
+
 ## Ejecutar
 
 Se ha probado con **Godot 4.6.3**, aunque `project.godot` conserva la etiqueta 4.7.
