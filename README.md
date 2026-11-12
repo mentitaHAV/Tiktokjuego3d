@@ -213,3 +213,9 @@ godot --headless --path . --script res://tests/actores_3d.gd
 
 La grabacion `tools/grabar.gd` acepta `--interior` para mostrar el acceso a las
 camas del atico, usando los mismos modelos y recorridos que la partida.
+
+### Ajustes del almacén y tipografía
+
+Tipografía Pixelify Sans incluida bajo licencia OFL, con soporte para español y fuentes de respaldo para nombres de usuarios. Las ocho cajas dejan libre el acceso junto a las ventanas y los residentes las rodean al caminar. Los suministros deben cocinarse antes de comer; los avisos distinguen munición baja, agotada y pendiente de reparto.
+
+![Almacén e interfaz pixel art](docs/almacen-tipografia.png)

@@ -118,7 +118,8 @@ func _reiniciar_mundo() -> void:
 	cocina_ref.entrante = 0
 	cajas = []
 	for pv in puestos_ventana():
-		cajas.append({"puesto": pv.puesto, "x": CASA_X1 - 42.0, "y": pv.y, "ax": CASA_X1 - 60.0, "ay": pv.y, "f": pv.f, "mun": 40, "max": CAJA_MAX, "entrante": 0})
+		cajas.append({"puesto": pv.puesto, "x": CASA_X1 - 18.0, "y": pv.y + 0.7, "ax": CASA_X1 - 25.0, "ay": pv.y + 0.7, "f": pv.f, "mun": 40, "max": CAJA_MAX, "entrante": 0})
+	navegacion.actualizar_cajas(cajas)
 	puertas = []
 	for puesto in puestos_ventana():
 		if puesto.f != 0:
@@ -531,7 +532,7 @@ func _decidir(s: Dictionary) -> void:
 			if not puesto.is_empty():
 				c.append([84.0 * s.val, puesto])
 
-	if s.hambre >= 55.0 and (stock.comida > 0 or stock.crudo > 0):
+	if s.hambre >= 55.0 and stock.comida > 0:
 		c.append([(s.hambre - 20.0) * 1.1 * s.glot, {"tipo": "comer", "x": MESA_X + float(s.id % 8 - 4) * 12.0, "f": 0, "dur": 3.0}])
 
 	var durmiendo: bool = s.accion == "dormir"
@@ -635,6 +636,23 @@ func _caja_de(s: Dictionary) -> Variant:
 	if s.accion == "disparar" and s.llego and s.puesto >= 0 and s.puesto < cajas.size():
 		return cajas[s.puesto]
 	return null
+
+
+func aviso_municion() -> String:
+	var disponible := 0
+	var en_transito := 0
+	for cj in cajas:
+		disponible += int(cj.mun)
+	for humano in supervivientes:
+		if humano.hp > 0:
+			disponible += int(humano.cartuchos)
+			if humano.carga.get("kind", "") == "municion":
+				en_transito += int(humano.carga.get("n", 0))
+	if disponible + en_transito + int(alm.municion) == 0:
+		return "¡SIN MUNICIÓN!"
+	if disponible < 60:
+		return "REPARTIR MUNICIÓN" if alm.municion + en_transito > 0 else "MUNICIÓN BAJA"
+	return ""
 
 
 func municion_total() -> int:
@@ -836,9 +854,6 @@ func _terminar(s: Dictionary) -> void:
 			if stock.comida >= 1:
 				stock.comida -= 1
 				s.hambre = maxf(0.0, s.hambre - 60.0)
-			elif stock.crudo >= 1:
-				stock.crudo -= 1
-				s.hambre = maxf(0.0, s.hambre - 28.0)
 		"cocinar":
 			if stock.crudo >= 1:
 				stock.crudo -= 1

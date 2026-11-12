@@ -19,6 +19,7 @@ const SANGRE := [Color("8a0f0f"), Color("a31515"), Color("5c0a0a"), Color("c21c1
 
 var sim: Sim
 var fuente: Font
+var fuente_titulo: Font
 var vel_juego := 1
 var pausa := false
 var pos_eventos := 0
@@ -49,7 +50,17 @@ func _ready() -> void:
 	sim.cargar_historial(RUTA_HISTORIAL)
 	guardados = sim.historial.size()
 	gen_vista = sim.gen
-	fuente = ThemeDB.fallback_font
+	var pixel: FontFile = load("res://arte/fuentes/PixelifySans.ttf")
+	pixel.antialiasing = TextServer.FONT_ANTIALIASING_NONE
+	pixel.fallbacks = [ThemeDB.fallback_font]
+	var cuerpo := FontVariation.new()
+	cuerpo.base_font = pixel
+	cuerpo.variation_opentype = {"wght": 500}
+	fuente = cuerpo
+	var titulo := FontVariation.new()
+	titulo.base_font = pixel
+	titulo.variation_opentype = {"wght": 700}
+	fuente_titulo = titulo
 	rng.seed = 7
 	for i in range(50):
 		estrellas.append(Vector2(rng.randf_range(0, 640), rng.randf_range(30, 220)))
@@ -289,18 +300,19 @@ func _texto(txt: String, x: float, y: float, col: Color, tam: int = 7, ancho: fl
 	var k := 2.0
 	var t2 := int(round(tam * 2.3))
 	var p := Vector2(floorf((x - ancho / 2.0) * k), floorf(y * k))
-	draw_string_outline(fuente, p, txt, HORIZONTAL_ALIGNMENT_CENTER, ancho * k, t2, 4, Color(0, 0, 0, 0.95))
-	draw_string(fuente, p, txt, HORIZONTAL_ALIGNMENT_CENTER, ancho * k, t2, col)
+	var tipo := fuente_titulo if tam >= 7 else fuente
+	draw_string_outline(tipo, p, txt, HORIZONTAL_ALIGNMENT_CENTER, ancho * k, t2, 2, Color(0, 0, 0, 0.95))
+	draw_string(tipo, p, txt, HORIZONTAL_ALIGNMENT_CENTER, ancho * k, t2, col)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2(2, 2))
 
 
-func _sprite_prop(nombre: String, pos: Vector2, mod: Color = Color.WHITE) -> void:
+func _sprite_prop(nombre: String, pos: Vector2, mod: Color = Color.WHITE, escala: float = 1.0) -> void:
 	var t := tex("prop_%s.png" % nombre)
 	if t == null:
 		return
 	var m: Dictionary = props_meta.get(nombre, {"pie": [t.get_width() / 2.0, t.get_height() - 6.0]})
 	var pie: Array = m.pie
-	draw_texture(t, Vector2(floorf(pos.x - pie[0]), floorf(pos.y - pie[1])), mod)
+	draw_texture_rect(t, Rect2((pos - Vector2(pie[0], pie[1]) * escala).floor(), t.get_size() * escala), false, mod)
 
 
 func _sprite_hoja(nombre: String, col: int, fila: int, pos: Vector2, mod: Color = Color.WHITE, dy: float = 0.0) -> void:
@@ -320,6 +332,8 @@ func _draw() -> void:
 	_suelo(osc)
 	for m in manchas:
 		_rc(m[1], m[0], m[2], m[3], m[4])
+	for a in sim.arboles:
+		_sprite_prop("arbol" if sim.t >= a.listo else "tocon", proy(a.x, a.y, 0.0), Color.WHITE, 0.65 if sim.t >= a.listo else 1.0)
 	# Casa central, dibujada con las mismas coordenadas que la simulacion.
 	var t_atras := tex("casa_atras.png")
 	if t_atras:
@@ -413,8 +427,6 @@ func _entidades() -> void:
 		lista.append([s.y, "surv", s])
 	for e in sim.cadaveres:
 		lista.append([e.y, "cad", e])
-	for a in sim.arboles:
-		lista.append([a.y, "arbol", a])
 	for h in sim.huertos:
 		lista.append([h.y, "huerto", h])
 	for tb in sim.tumbas:
@@ -426,9 +438,6 @@ func _entidades() -> void:
 			"zombi": _zombi(it[2])
 			"surv": _superviviente(it[2])
 			"cad": _cadaver(it[2])
-			"arbol":
-				var a: Dictionary = it[2]
-				_sprite_prop("arbol" if sim.t >= a.listo else "tocon", proy(a.x, a.y, 0.0), Color.WHITE)
 			"huerto":
 				var h: Dictionary = it[2]
 				_sprite_prop("huerto_listo" if sim.t >= h.listo else "huerto_vacio", proy(h.x, h.y, 0.0), Color.WHITE)
@@ -492,16 +501,17 @@ func _hud() -> void:
 	for cj in sim.cajas:
 		en_cajas += cj.mun
 	var max_cajas: int = sim.cajas.size() * Sim.CAJA_MAX
-	_indicador(8.0, 21.0, "ALMACEN SUMINISTROS", sim.alm.crudo, 120, Color("d9b45a"), "cocina %d" % sim.stock.crudo)
-	_indicador(168.0, 21.0, "ALMACEN MUNICION", sim.alm.municion, 300, Color("9fc060"), "cajas %d/%d" % [en_cajas, max_cajas])
+	_indicador(8.0, 21.0, "SUMINISTROS", sim.alm.crudo, 120, Color("d9b45a"), "cocina %d" % sim.stock.crudo)
+	_indicador(168.0, 21.0, "MUNICIÓN", sim.alm.municion, 300, Color("9fc060"), "cajas %d/%d" % [en_cajas, max_cajas])
 	var r := "COMIDA LISTA %d   MADERA %d   VENTANAS %d/8" % [sim.stock.comida, sim.stock.madera, sim._contar("disparar")]
 	_texto(r, 495, 29, Color("ffd9a0"), 6, 280)
 	var vacias := 0
 	for cj in sim.cajas:
 		if cj.mun <= 0:
 			vacias += 1
-	if sim.alm.municion <= 0 and en_cajas < 60:
-		_texto("¡SIN MUNICION!", 320, 50, Color("ff5040", 0.6 + 0.4 * sin(t_real * 6.0)), 8, 200)
+	var aviso: String = sim.aviso_municion()
+	if aviso != "":
+		_texto(aviso, 320, 50, Color("ff5040") if aviso == "¡SIN MUNICIÓN!" else Color("ffbc64"), 8, 240)
 	elif vacias > 0:
 		_texto("%d cajas vacias" % vacias, 320, 50, Color("ff9a60", 0.7 + 0.3 * sin(t_real * 5.0)), 6, 200)
 	if sim.historial.size() > 0:
@@ -524,7 +534,7 @@ func _indicador(x: float, y: float, titulo: String, valor: int, tope: int, col: 
 	var f := clampf(float(valor) / float(tope), 0.0, 1.0)
 	var c := col if f > 0.2 else Color("e05a40")
 	_rc(x, y + 2, 150.0 * f, 4, c)
-	_texto("%s %d" % [titulo, valor], x + 75, y - 4, Color("f0e6d0"), 5, 190)
+	_texto("%s · %d" % [titulo, valor], x + 75, y - 4, Color("f0e6d0"), 5, 190)
 	_texto(extra, x + 75, y + 13, Color("b8a890"), 5, 190)
 
 
@@ -564,7 +574,7 @@ func _almacen() -> void:
 	for i in range(n_com):
 		_caja_reserva(X1 - 26.0 + (i % 2) * 11.0, Y1, (i / 2) % 3, i / 6, Color("a07a44"), Color("d8b0a0"))
 	var cartel := proy(X0 + 14.0, Y0, H + 0.6)
-	_texto("ALMACEN", cartel.x, cartel.y - 6, Color("e8d8b0"), 7, 80)
+	_texto("ALMACÉN", cartel.x, cartel.y - 6, Color("e8d8b0"), 7, 80)
 
 
 func _caja_reserva(cx: float, y1: float, fila: int, piso: int, col: Color, marca: Color) -> void:

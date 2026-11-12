@@ -68,5 +68,52 @@ func _init() -> void:
 	t.cajas[1].mun = 0
 	var elegido: Dictionary = t._puesto_ventana(h)
 	comprobar(elegido.is_empty() or t.cajas[elegido.puesto].mun > 0, "Elige un puesto sin municion")
+	# Las ocho cajas tienen acceso libre y reciben un reparto real, incluso entre camas.
+	var reparto := Sim.new(77)
+	reparto.aplicar_regalo("Repartidor", "GG")
+	var repartidor: Dictionary = reparto.supervivientes[0]
+	for cj in reparto.cajas:
+		comprobar(reparto.navegacion.transitable(cj.ax / 25.0, cj.ay, cj.f), "Acceso bloqueado a caja %d" % cj.puesto)
+		comprobar(not reparto.navegacion.transitable((cj.x + 6.0) / 25.0, cj.y, cj.f), "La caja no bloquea el paso")
+		reparto._soltar(repartidor)
+		repartidor.accion = ""
+		repartidor.f = 0
+		repartidor.x = Sim.ALM_ACCESO_X
+		repartidor.y = Sim.ALM_ACCESO_Y
+		reparto.alm.municion = 120
+		cj.mun = 0
+		reparto._comenzar(repartidor, {"tipo":"recoger", "x":Sim.ALM_ACCESO_X, "y":Sim.ALM_ACCESO_Y, "f":0, "dur":1.2, "ref":cj})
+		for i in range(30):
+			reparto._actuar(repartidor, 0.1)
+			if repartidor.accion == "": break
+		reparto._comenzar(repartidor, {"tipo":"entregar", "x":cj.ax, "y":cj.ay, "f":cj.f, "dur":1.0})
+		for i in range(1800):
+			reparto._actuar(repartidor, 0.1)
+			if repartidor.accion == "": break
+		comprobar(cj.mun == Sim.CARGA_MUN and repartidor.carga.is_empty(), "No se entrega en caja %d" % cj.puesto)
+	# Solo la comida cocinada sacia el hambre.
+	t.stock.comida = 0
+	t.stock.crudo = 3
+	h.hambre = 80.0
+	h.accion = "comer"
+	t._terminar(h)
+	comprobar(t.stock.crudo == 3 and h.hambre == 80.0, "Se come comida sin cocinar")
+	t.stock.comida = 1
+	h.accion = "comer"
+	t._terminar(h)
+	comprobar(t.stock.comida == 0 and h.hambre == 20.0, "No se consume comida cocinada")
+	# Las balas de los cargadores y las cajas cuentan antes de avisar de agotamiento.
+	t.alm.municion = 0
+	for cj in t.cajas: cj.mun = 1
+	h.cartuchos = 30
+	comprobar(t.aviso_municion() == "MUNICIÓN BAJA", "Aviso falso con balas disponibles")
+	for cj in t.cajas: cj.mun = 0
+	h.cartuchos = 0
+	comprobar(t.aviso_municion() == "¡SIN MUNICIÓN!", "No avisa al agotar municion")
+	h.carga = {"kind":"municion", "n":45}
+	comprobar(t.aviso_municion() == "REPARTIR MUNICIÓN", "Ignora municion en transito")
+	h.carga = {}
+	t.alm.municion = 100
+	comprobar(t.aviso_municion() == "REPARTIR MUNICIÓN", "No distingue reserva de municion lista")
 	print("Almacen: donacion, reparto a cajas, cocina y puestos sin municion: ", "OK" if fallos == 0 else "FALLO")
 	quit(0 if fallos == 0 else 1)

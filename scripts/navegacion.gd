@@ -4,12 +4,18 @@ const CELDA := 0.2
 const RADIO := 0.14
 var datos: Dictionary
 var mapas := {}
+var cajas_obstaculos: Array = []
+func actualizar_cajas(cajas: Array) -> void:
+	cajas_obstaculos.clear()
+	mapas.clear()
+	for c in cajas:
+		cajas_obstaculos.append({"f":c.f,"x0":c.x/25.0,"x1":(c.x+12.0)/25.0,"y0":c.y-.35,"y1":c.y+.35})
 func _init() -> void:
 	datos = JSON.parse_string(FileAccess.get_file_as_string("res://arte/interiores.json"))
 func transitable(x: float, y: float, f: int) -> bool:
 	if f>0 and (x<6.15 or x>31.45 or y<0.05 or y>6.8):return false
 	if f>0 and x>18.9 and x<21.85 and y>0.85 and y<4.3:return false
-	for o in datos.obstaculos:
+	for o in datos.obstaculos + cajas_obstaculos:
 		if o.f==f and x>o.x0-RADIO and x<o.x1+RADIO and y>o.y0-RADIO and y<o.y1+RADIO:return false
 	return true
 func mapa(f: int) -> AStarGrid2D:
