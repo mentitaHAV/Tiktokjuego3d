@@ -326,7 +326,6 @@ func _draw() -> void:
 	_luces_casa(osc)
 	_malla_huerto(false)
 	_almacen()
-	_cajas_ventana()
 	bocas_arma.clear()
 	_entidades()
 	_malla_huerto(true)
@@ -334,6 +333,7 @@ func _draw() -> void:
 	if t_del:
 		_capa_casa(t_del)
 	draw_texture_rect(ventanas_3d.get_texture(),Rect2(0,0,640,360),false)
+	_vapor_cocina()
 	_efectos()
 	for humano in sim.supervivientes:
 		_rotulo_humano(humano)
@@ -448,6 +448,13 @@ func _rotulo_humano(s: Dictionary) -> void:
 		estrellitas += "*"
 	if sim.vivos() <= 15 or s.accion == "disparar" or (get_global_mouse_position() / 2.0).distance_to(pos - Vector2(0, 12)) < 10.0:
 		_texto(String(s.nombre).substr(0, 10) + estrellitas, pos.x, pos.y - 20, Color("ffe9c0"), 5, 45)
+	if (get_global_mouse_position() / 2.0).distance_to(pos - Vector2(0, 12)) < 10.0:
+		var actividad := ""
+		if s.accion == "cocinar": actividad = "cocinando" if s.llego else "a la cocina"
+		elif s.accion == "cultivar": actividad = "huerto"
+		elif s.carga.get("n", 0) > 0: actividad = "lleva comida" if s.carga.kind == "crudo" else "lleva munición"
+		elif s.accion == "recoger": actividad = "al almacén"
+		if actividad != "": _texto(actividad, pos.x, pos.y - 13, Color("b8b29b"), 5, 70)
 	if s.hp < 99.0:
 		_rc(pos.x - 6, pos.y - 18, 12, 1, Color("3a0a0a"))
 		_rc(pos.x - 6, pos.y - 18, 12.0 * s.hp / 100.0, 1, Color("e03030"))
@@ -462,6 +469,17 @@ func _zombi(_z: Dictionary) -> void:
 
 func _cadaver(_e: Dictionary) -> void:
 	pass
+
+
+func _vapor_cocina() -> void:
+	for humano in sim.supervivientes:
+		if humano.accion != "cocinar" or not humano.llego:
+			continue
+		for i in range(3):
+			var fase := fmod(t_anim * 0.5 + i / 3.0, 1.0)
+			var p := proy(humano.x, humano.y + 0.6, humano.vy + 1.1)
+			p += Vector2(sin(fase * TAU + i) * 1.5, -fase * 9.0)
+			draw_circle(p.floor(), 0.6 + fase, Color(0.75, 0.75, 0.7, (1.0 - fase) * 0.28))
 
 
 func _efectos() -> void:
@@ -486,7 +504,7 @@ func _hud() -> void:
 	var max_cajas: int = sim.cajas.size() * Sim.CAJA_MAX
 	_indicador(8.0, 21.0, "SUMINISTROS", sim.alm.crudo, 120, Color("d9b45a"), "cocina %d" % sim.stock.crudo)
 	_indicador(168.0, 21.0, "MUNICIÓN", sim.alm.municion, 300, Color("9fc060"), "cajas %d/%d" % [en_cajas, max_cajas])
-	var r := "COMIDA LISTA %d   MADERA %d   VENTANAS %d/8" % [sim.stock.comida, sim.stock.madera, sim._contar("disparar")]
+	var r := "COMIDA %d/%d   MADERA %d   VENTANAS %d/8" % [sim.stock.comida, sim.objetivo_comida(), sim.stock.madera, sim._contar("disparar")]
 	_texto(r, 495, 29, Color("ffd9a0"), 6, 280)
 	var vacias := 0
 	for cj in sim.cajas:
@@ -497,6 +515,9 @@ func _hud() -> void:
 		_texto(aviso, 320, 50, Color("ff5040") if aviso == "¡SIN MUNICIÓN!" else Color("ffbc64"), 8, 240)
 	elif vacias > 0:
 		_texto("%d cajas vacias" % vacias, 320, 50, Color("ff9a60", 0.7 + 0.3 * sin(t_real * 5.0)), 6, 200)
+	elif sim.zombis.is_empty() and sim.cola_zombis.is_empty():
+		var rutina := "EN CALMA · COCINA %d · HUERTO %d · REPARTO %d" % [sim._contar("cocinar"), sim._contar("cultivar"), sim._contar("recoger") + sim._contar("entregar")]
+		_texto(rutina, 320, 50, Color("b9bdad"), 6, 400)
 	if sim.historial.size() > 0:
 		var mejor := 0.0
 		for h in sim.historial:
@@ -567,19 +588,6 @@ func _caja_reserva(cx: float, y1: float, fila: int, piso: int, col: Color, marca
 	_rc(p.x - 1, p.y, 2, 1, marca)
 
 
-func _cajas_ventana() -> void:
-	# Una caja de municion al lado de cada ventana; el nivel se ve en la barrita encima.
-	for cj in sim.cajas:
-		var x: float = cj.x
-		var y: float = cj.y
-		var z: float = Sim.PISO_Y[cj.f]
-		_prisma(x, x + 12.0, y - 0.35, y + 0.35, z, z + 0.45, Color("5c6b36"))
-		var p := proy(x + 6.0, y - 0.35, z + 0.22)
-		_rc(p.x - 2, p.y, 4, 1, Color("e0c04a"))
-		var barra := proy(x + 6.0, y - 0.35, z + 0.75)
-		var f := clampf(float(cj.mun) / float(cj.max), 0.0, 1.0)
-		_rc(barra.x - 6, barra.y, 12, 2, Color(0, 0, 0, 0.75))
-		_rc(barra.x - 6, barra.y, 12.0 * f, 2, Color("9fc060") if f > 0.25 else Color("e05a40"))
 
 
 # Cadenas organicas continuas, cuantizadas al pixel al dibujar.

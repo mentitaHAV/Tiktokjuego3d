@@ -30,6 +30,8 @@ var utensilios: Node3D
 var martillo: Node3D
 var cuchara: Node3D
 var plato: Node3D
+var carga_visual: Node3D
+var caja_carga: MeshInstance3D
 
 func mat(h: String, metalico: bool = false) -> StandardMaterial3D:
 	var clave:=h+str(metalico)
@@ -113,6 +115,12 @@ func crear(s: Dictionary, zombi: bool) -> void:
 		pieza(cuchara,"esfera",Vector3(0,.18,0),Vector3(.035,.05,.015),madera)
 		plato=pieza(utensilios,"esfera",Vector3.ZERO,Vector3(.11,.015,.11),mat("b6b5a5"))
 		utensilios.visible=false
+		carga_visual=Node3D.new();modelo.add_child(carga_visual)
+		carga_visual.position=Vector3(0,1.03,-.34)
+		caja_carga=pieza(carga_visual,"caja",Vector3.ZERO,Vector3(.43,.30,.34),mat("6a5239"))
+		for lado in [-1,1]:
+			pieza(carga_visual,"caja",Vector3(lado*.16,0,-.18),Vector3(.025,.31,.025),mat("343a3b"))
+		carga_visual.visible=false
 func crear_arma(nombre: String) -> void:
 	if is_instance_valid(arma):arma.queue_free()
 	arma_modelo=nombre;arma=Node3D.new();modelo.add_child(arma)
@@ -154,6 +162,7 @@ func actualizar(s: Dictionary, dt: float, camas: Array) -> void:
 	var ataque: bool=s.get("atac",0.0)>0 if infectado else s.accion in ["disparar","luchar"] or s.tiempo_tiro<.3
 	var retroceso: float=s.get("retroceso",0.0)
 	var trabajando: bool=not infectado and s.llego and not ataque and s.accion in ["cocinar","comer","reparar","cultivar","talar"]
+	var transportando: bool=not infectado and s.get("carga",{}).get("n",0)>0 and not ataque
 	var recargando: bool=not infectado and s.recarga>0
 	var durmiendo: bool=not infectado and s.accion=="dormir" and s.llego and s.cama_id>=0
 	modelo.position=Vector3(0,absf(sin(fase*2))*.025*andando,0)
@@ -171,6 +180,7 @@ func actualizar(s: Dictionary, dt: float, camas: Array) -> void:
 			var pitch:=atan2(objetivo.y-1.2,Vector2(objetivo.x,objetivo.z).length())
 			arma.rotation.x=pitch+retroceso*.10;cabeza.rotation.x=pitch*.6
 		if recargando:arma.rotation.x=-.6-sin(s.recarga*3)*.2
+		if trabajando and s.accion=="cocinar":rotation.y=lerp_angle(rotation.y,0,minf(1,dt*6))
 		if trabajando:arma.position=Vector3(0,1.1,.20);arma.rotation.x=-PI/2
 	for i in range(2):
 		var lado: int=-1 if i==0 else 1
@@ -188,6 +198,7 @@ func actualizar(s: Dictionary, dt: float, camas: Array) -> void:
 		elif ataque or recargando:mano=Vector3(.14 if i==1 else -.03,1.17-retroceso*.04,-.27 if i==1 else (-.31 if s.get("modelo_arma","")=="Pistola" else -.63))
 		elif not trabajando:mano=Vector3(.14 if i==1 else -.03,1.05,-.22 if i==1 else (-.25 if s.get("modelo_arma","")=="Pistola" else -.47))
 		if trabajando:mano=Vector3(lado*.12,1.03+sin(fase*3)*.1,-.35)
+		if transportando:mano=Vector3(lado*.22,.98,-.36)
 		if recargando and i==0:mano=Vector3(.10,.9+sin(s.recarga*4)*.1,-.4)
 		if durmiendo:mano=Vector3(lado*.20,.95,-.02)
 		var codo:=(hombro+mano)*.5+Vector3(lado*.09,-.09,.05)
@@ -196,6 +207,9 @@ func actualizar(s: Dictionary, dt: float, camas: Array) -> void:
 		hueso("antebrazo"+str(lado),codo,mano,.043)
 		manos[i].position=mano
 	if not infectado:
+		carga_visual.visible=transportando
+		if transportando:
+			caja_carga.material_override=mat("4b5150" if s.carga.kind=="municion" else "6a5239")
 		utensilios.visible=trabajando
 		utensilios.position=manos[1].position
 		utensilios.rotation.x=sin(fase*3)*.5
@@ -211,7 +225,7 @@ func actualizar(s: Dictionary, dt: float, camas: Array) -> void:
 			position=position.lerp(sobre_cama,descanso)
 			rotation.y=lerp_angle(rotation.y,0,descanso)
 			modelo.rotation=Vector3(-PI/2*descanso,0,0);modelo.position=Vector3.ZERO
-		arma.visible=descanso<.05
+		arma.visible=descanso<.05 and not trabajando and not transportando and not durmiendo
 
 func cadaver(e: Dictionary) -> void:
 	position=Vector3(e.x/25.0,e.z+.12,-e.y)

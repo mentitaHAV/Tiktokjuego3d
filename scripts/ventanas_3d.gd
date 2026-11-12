@@ -76,6 +76,7 @@ func cubo(padre: Node3D, pos: Vector3, tam: Vector3, mat: Material) -> MeshInsta
 	return m
 
 func crear_ventana(b: Dictionary) -> void:
+	if b.f != 0:return
 	var marco := Node3D.new()
 	raiz.add_child(marco)
 	# Ambas ventanas estan en el mismo plano de la pared este, sin chaflan ni marco saliente.
@@ -99,6 +100,7 @@ func crear_ventana(b: Dictionary) -> void:
 func actualizar(defensas: Array, dt: float) -> void:
 	var cambio := false
 	for b in defensas:
+		if b.f != 0:continue
 		if not tablas.has(b.id):
 			crear_ventana(b)
 		var n := ceili(b.hp / Sim.TABLA_HP)
@@ -182,6 +184,7 @@ func limpiar_efectos() -> void:
 	efectos.clear()
 	render_target_update_mode = SubViewport.UPDATE_ONCE
 
+var cajas_municion := {}
 var actores := {}
 var luces_actores_creadas := false
 func luces_actores() -> void:
@@ -202,8 +205,24 @@ func luces_actores() -> void:
 		plano.mesh=m;plano.material_override=sombra;raiz.add_child(plano)
 		plano.position=Vector3(18.8,altura-.015,-3.5)
 		plano.layers=1<<(int(roundf(altura/4.8))+1)
+func actualizar_cajas(cajas: Array) -> void:
+	for c in cajas:
+		if cajas_municion.has(c.puesto):continue
+		var caja := Node3D.new()
+		raiz.add_child(caja)
+		caja.position=Vector3((c.x+6.0)/25.0,Sim.PISO_Y[c.f],-c.y)
+		# Caja baja, mate y apoyada en el suelo; sin indicadores flotantes.
+		cubo(caja,Vector3(0,.17,0),Vector3(.46,.34,.64),metal)
+		cubo(caja,Vector3(0,.35,0),Vector3(.48,.04,.66),metal)
+		for lado in [-1,1]:
+			cubo(caja,Vector3(lado*.15,.18,.325),Vector3(.025,.26,.025),laton)
+		for m in caja.find_children("*","MeshInstance3D",true,false):m.layers=1<<(c.f+1)
+		cajas_municion[c.puesto]=caja
+
+
 func actualizar_actores(sim: Sim, dt: float) -> void:
 	luces_actores()
+	actualizar_cajas(sim.cajas)
 	var vivos: Dictionary={}
 	for s in sim.supervivientes:
 		var clave: String="s%d"%s.id

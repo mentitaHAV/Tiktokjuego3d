@@ -33,6 +33,14 @@ func probar() -> void:
 	for pieza in mundo.tablas[0]:
 		if pieza.visible:visibles+=1
 	comprobar(visibles==1,"Reparar una tabla no se refleja en el mesh")
+	mundo.actualizar_cajas(sim.cajas)
+	comprobar(mundo.cajas_municion.size()==8,"No crea cajas fisicas para las ocho ventanas")
+	for cj in sim.cajas:
+		var nodo: Node3D=mundo.cajas_municion[cj.puesto]
+		comprobar(is_equal_approx(nodo.position.y,Sim.PISO_Y[cj.f]),"Caja flotando sobre el suelo")
+	# Las defensas de plantas superiores se ignoran incluso si llega una entrada incorrecta.
+	mundo.actualizar([{"id":99,"f":3}],0)
+	comprobar(not mundo.tablas.has(99),"Se dibuja una barricada superior")
 	mundo.disparar({"x0":770.0,"d0":1.1,"z0":1.3,"x1":1100.0,"d1":1.1,"z1":1.0})
 	var balas:=0
 	for fx in mundo.efectos:

@@ -15,6 +15,12 @@ func probar() -> void:
 	s.camina=true;s.anim+=2
 	actor.actualizar(s,.1,sim.camas())
 	comprobar(actor.pies[0].position.distance_to(antes)>.05,"No articula las piernas")
+	s.carga={"n":12,"kind":"crudo"};s.accion="entregar";s.llego=false
+	actor.actualizar(s,.1,sim.camas())
+	comprobar(actor.carga_visual.visible and not actor.arma.visible,"No lleva la caja con las manos libres")
+	s.carga={};s.accion="cocinar";s.llego=true
+	actor.actualizar(s,.1,sim.camas())
+	comprobar(not actor.carga_visual.visible and actor.cuchara.visible and not actor.arma.visible,"Cocina con el arma en lugar del utensilio")
 	var cama: Dictionary=sim.camas()[34]
 	s.cama_id=cama.id;s.accion="dormir";s.llego=true;s.f=cama.f;s.vy=Sim.PISO_Y[cama.f]
 	s.x=cama.acceso_x;s.y=cama.acceso_y;s.camina=false

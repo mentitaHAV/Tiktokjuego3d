@@ -225,3 +225,13 @@ Tipografía Pixelify Sans incluida bajo licencia OFL, con soporte para español 
 Los residentes abandonan las ventanas al terminar la amenaza y mantienen su tarea hasta completarla, salvo necesidades urgentes o combate. Una invasión en su planta interrumpe el trabajo: disparan desde distancia, retroceden ante un enemigo cercano y recargan usando las cajas próximas. Los disparos interiores comprueban obstáculos. Se eliminaron los fragmentos verdes y morados de las muertes; quedan salpicaduras oscuras limitadas.
 
 Comprobaciones: `tests/comportamiento.gd` y `tests/efectos.gd`, además de las pruebas de armas, almacén, navegación e interiores.
+
+### Vida en la casa durante la calma
+
+Los residentes preparan seis raciones por persona, reponen primero la despensa cuando hace falta cocinar y atienden el huerto para mantener reservas. Los puestos de cocina son exclusivos: un cocinero para hasta seis residentes, hasta cuatro en una casa llena. Las tareas se completan antes de elegir la siguiente.
+
+El reparto se ve con cajas sostenidas con ambas manos; al cocinar usan utensilios y aparece vapor. El indicador muestra comida preparada frente al objetivo y cuántas personas cocinan, cultivan o reparten durante la calma. Las cajas de munición son modelos 3D oscuros apoyados en cada planta, sin barras flotantes verdes. Solo hay barricadas en las dos ventanas de planta baja.
+
+![Casa en calma](docs/vida-casa.jpg)
+
+Regresión: `tests/vida_casa.gd` simula cuatro minutos sin zombis con cinco residentes y comprueba cocina, huerto, transporte, reservas y supervivencia.

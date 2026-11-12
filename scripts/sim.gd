@@ -42,7 +42,7 @@ const ARMAS := {
 const FRASES := {
 	"comer": ["Qué hambre...", "A comer.", "Ñam."],
 	"dormir": ["Me caigo de sueño.", "A la cama.", "Zzz..."],
-	"cocinar": ["Yo cocino.", "Algo caliente.", "Huele bien."],
+	"cocinar": ["Preparo para luego.", "Algo caliente.", "Huele bien."],
 	"construir": ["Más muros.", "Esto aguanta.", "A clavar."],
 	"reparar": ["Arreglo esto.", "Otro parche.", "Aguanta, puerta."],
 	"cultivar": ["A la huerta.", "Más comida.", "Cosechando."],
@@ -565,8 +565,10 @@ func _decidir(s: Dictionary) -> void:
 
 	var urg := 20.0 if amen != null else 0.0
 
-	if stock.crudo >= 1 and stock.comida < 2 * pop + 2 and (_contar("cocinar") < 4 or s.accion == "cocinar"):
-		c.append([(46.0 + (10.0 if stock.comida == 0 else 0.0)) * s.tr, {"tipo": "cocinar", "x": COCINA_X + (s.id % 4) * 16.0, "f": 0, "dur": 5.0}])
+	var cocina := _puesto_cocina(s)
+	if stock.crudo >= 1 and stock.comida < objetivo_comida() and not cocina.is_empty():
+		var prioridad := 67.0 if amen == null else 46.0
+		c.append([(prioridad + (15.0 if stock.comida == 0 else 0.0)) * s.tr, cocina])
 
 
 	if stock.madera >= 1:
@@ -576,11 +578,11 @@ func _decidir(s: Dictionary) -> void:
 			c.append([(90.0 + urg) * s.tr, {"tipo": "reparar", "x": ox2, "f": d.f, "y": d.y, "dur": 0.8, "ref": d}])
 
 	if not noche:
-		if stock.crudo + alm.crudo < 3 * pop + 4:
+		if stock.crudo + alm.crudo < maxi(90, 10 * pop) and (_contar("cultivar") < maxi(1, ceili(pop / 8.0)) or s.accion == "cultivar"):
 			var h = _libre_recurso(huertos, 200.0)
 			if h != null:
 				c.append([40.0 * s.tr, {"tipo": "cultivar", "x": h.x, "f": 0, "dur": 6.0, "ref": h}])
-		if stock.madera < 14:
+		if stock.madera < maxi(40, pop * 3) and (_contar("talar") < 2 or s.accion == "talar"):
 			var a = _libre_recurso(arboles, 200.0)
 			if a != null:
 				c.append([38.0 * s.tr, {"tipo": "talar", "x": a.x, "f": 0, "dur": 6.0, "ref": a}])
@@ -625,6 +627,25 @@ func _decidir(s: Dictionary) -> void:
 	_comenzar(s, mejor)
 
 
+func objetivo_comida() -> int:
+	# Seis raciones por persona: preparar antes de que alguien tenga hambre.
+	return maxi(12, vivos() * 6)
+
+
+func _puesto_cocina(s: Dictionary) -> Dictionary:
+	var limite := mini(4, maxi(1, ceili(vivos() / 6.0)))
+	for i in range(limite):
+		var x := COCINA_X + i * 16.0
+		var ocupado := false
+		for otro in supervivientes:
+			if otro.id != s.id and otro.accion == "cocinar" and is_equal_approx(otro.ox, x):
+				ocupado = true
+				break
+		if not ocupado:
+			return {"tipo":"cocinar", "x":x, "y":1.4, "f":0, "dur":6.0}
+	return {}
+
+
 func _reservado_recoger(dest: Variant, excepto: Variant) -> bool:
 	for o in supervivientes:
 		if not is_same(o, excepto) and o.accion == "recoger" and is_same(o.ref, dest):
@@ -641,6 +662,9 @@ func _plan_reparto(s: Dictionary) -> Variant:
 				return {"tipo": "cocina", "dest": r}
 		elif alm.municion > 0 and r.mun + r.entrante < r.max * 0.85:
 			return {"tipo": "caja", "dest": r}
+	# La comida preparada necesita una despensa abastecida antes de llenar cajas de reserva.
+	if stock.comida < objetivo_comida() and stock.crudo + cocina_ref.entrante < maxi(COCINA_MIN, vivos() * 2) and alm.crudo > 0 and not _reservado_recoger(cocina_ref, s):
+		return {"tipo":"cocina", "dest":cocina_ref}
 	var peor = null
 	var pm := 1e9
 	for cj in cajas:
