@@ -170,6 +170,10 @@ func _unhandled_input(ev: InputEvent) -> void:
 			KEY_R:
 				var n: String = NOMBRES_PRUEBA[randi() % NOMBRES_PRUEBA.size()] + str(randi() % 100)
 				sim.aplicar_regalo(n, "Rose", 1)
+			KEY_C:
+				for s in sim.supervivientes:
+					sim.comentar(s.nombre, ["Hola chat, como estan?", "Disparen a los zombis!!", "Tengo hambre, quien cocina?", "Esta casa es muy grande y tiene un monton de ventanas"][randi() % 4])
+					break
 			KEY_L:
 				sim.aplicar_regalo("Fan" + str(randi() % 100), "like", 10)
 			KEY_M:
@@ -200,7 +204,9 @@ func _leer_eventos() -> void:
 		if linea == "":
 			continue
 		var d = JSON.parse_string(linea)
-		if d is Dictionary and d.has("usuario") and d.has("regalo"):
+		if d is Dictionary and d.has("usuario") and d.has("comentario"):
+			sim.comentar(str(d.usuario), str(d.comentario))
+		elif d is Dictionary and d.has("usuario") and d.has("regalo"):
 			sim.aplicar_regalo(str(d.usuario), str(d.regalo), int(d.get("cantidad", 1)), int(d.get("monedas", -1)))
 	pos_eventos = f.get_position()
 
@@ -496,10 +502,52 @@ func _rotulo_humano(s: Dictionary) -> void:
 	if s.hp < 70.0 or (s.hp < 99.0 and _detalles()):
 		_rc(pos.x - 6, pos.y - 18, 12, 1, Color("3a0a0a"))
 		_rc(pos.x - 6, pos.y - 18, 12.0 * s.hp / 100.0, 1, Color("e03030"))
-	if s.dice_ttl > 0.0 and s.dice != "" and (_detalles() or (get_global_mouse_position() / 2.0).distance_to(pos) < 14.0):
+	if s.comentario_ttl > 0.0 and s.comentario != "":
+		_globo_comentario(s.comentario, pos, clampf(s.comentario_ttl, 0.0, 1.0))
+	elif s.dice_ttl > 0.0 and s.dice != "" and (_detalles() or (get_global_mouse_position() / 2.0).distance_to(pos) < 14.0):
 		var tw := fuente.get_string_size(s.dice, HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x / 2.0
 		_rc(pos.x - tw / 2.0 - 2, pos.y - 44, tw + 4, 9, Color(0.95, 0.92, 0.9, 0.95))
 		_texto(s.dice, pos.x, pos.y - 37, Color("201818"), 6, tw + 20)
+
+
+func _lineas_globo(txt: String, max_chars: int = 26) -> Array:
+	var lineas: Array = []
+	var actual := ""
+	for palabra in txt.split(" ", false):
+		var w := String(palabra)
+		while w.length() > max_chars:
+			if actual != "":
+				lineas.append(actual)
+				actual = ""
+			lineas.append(w.substr(0, max_chars))
+			w = w.substr(max_chars)
+		if actual == "":
+			actual = w
+		elif actual.length() + 1 + w.length() <= max_chars:
+			actual += " " + w
+		else:
+			lineas.append(actual)
+			actual = w
+	if actual != "":
+		lineas.append(actual)
+	return lineas
+
+
+func _globo_comentario(txt: String, pos: Vector2, alfa: float) -> void:
+	# Globo de chat: siempre visible, varias lineas, siempre dentro de la pantalla.
+	var lineas := _lineas_globo(txt)
+	var ancho := 0.0
+	for l in lineas:
+		ancho = maxf(ancho, fuente.get_string_size(l, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x / 2.0)
+	ancho += 6.0
+	var alto := 8.0 * lineas.size() + 3.0
+	var x := clampf(pos.x - ancho / 2.0, 2.0, 638.0 - ancho)
+	var y := maxf(pos.y - 26.0 - alto, 44.0)
+	_rc(x - 1, y - 1, ancho + 2, alto + 2, Color(0.1, 0.08, 0.08, 0.9 * alfa))
+	_rc(x, y, ancho, alto, Color(0.96, 0.93, 0.86, 0.97 * alfa))
+	_rc(clampf(pos.x - 1, x + 1, x + ancho - 3), y + alto, 3, 2, Color(0.96, 0.93, 0.86, 0.97 * alfa))
+	for i in range(lineas.size()):
+		_texto(lineas[i], x + ancho / 2.0, y + 6.0 + i * 8.0, Color(0.1, 0.07, 0.07, alfa), 5, ancho + 8.0)
 
 
 func _zombi(_z: Dictionary) -> void:

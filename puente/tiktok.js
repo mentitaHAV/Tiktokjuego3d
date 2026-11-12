@@ -8,6 +8,7 @@
 //   {"usuario":"ana","regalo":"Rose","cantidad":1,"monedas":1}           1 moneda  -> 5 zombis
 //   {"usuario":"pepe","regalo":"Lion","cantidad":1,"monedas":29999}      cada moneda -> 5 zombis
 //   {"usuario":"luis","regalo":"GG","cantidad":1,"monedas":1}            GG        -> persona / suministros
+//   {"usuario":"ana","comentario":"hola a todos"}                        comentario -> lo dice su personaje
 // El puente solo informa de lo que paso; las reglas (x1 like, x5 moneda...) viven en scripts/sim.gd.
 const fs = require('fs');
 const path = require('path');
@@ -35,6 +36,7 @@ if (SIMULAR) {
     const r = Math.random();
     if (r < 0.7) emit({ usuario: u, regalo: 'like', cantidad: 1 + Math.floor(Math.random() * 12) });
     else if (r < 0.9) { const g = regalos[Math.floor(Math.random() * regalos.length)]; emit({ usuario: u, regalo: g[0], cantidad: 1, monedas: g[1] }); }
+    else if (r < 0.95) emit({ usuario: u, comentario: ['hola!', 'que miedo', 'disparen a esos zombis', 'tengo hambre'][Math.floor(Math.random() * 4)] });
     else emit({ usuario: u, regalo: 'GG', cantidad: 1, monedas: 1 });
   }, 1500);
   return;
@@ -75,6 +77,12 @@ setInterval(async () => {
     if (r) { if (!pollKey) { pollKey = r.path; console.log('contador de likes de la sala: ' + r.path); } sync(r.v, 'sala'); }
   } catch (e) { /* aun sin conexion */ }
 }, 2000);
+
+// Los comentarios del chat los dice el personaje de cada espectador dentro del juego.
+on(WebcastEvent.CHAT, (d) => {
+  const texto = String(d.comment || '').trim();
+  if (texto) emit({ usuario: who(d), comentario: texto.slice(0, 200) });
+});
 
 on(WebcastEvent.GIFT, (d) => {
   if (d.giftType === 1 && d.repeatEnd === false) return; // en una racha solo cuenta al terminar

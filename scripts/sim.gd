@@ -23,6 +23,7 @@ const VENTANA_DER := 770.0
 const MAX_TIRADORES := 8
 const ZOMBIS_POR_LIKE := 1      # 1 like = 1 zombi
 const ZOMBIS_POR_MONEDA := 5    # cada moneda de un regalo = 5 zombis (30 monedas = 150)
+const COMENTARIO_MAX := 80          # caracteres que dice un personaje por comentario
 const MAX_COLA := 600           # tope de zombis en espera para que un diluvio de likes no congele el directo
 const TIRO_RESERVA_X := CASA_X1 - 85.0
 const TABLA_HP := 30.0
@@ -202,6 +203,39 @@ func aplicar_regalo(usuario: String, regalo: String, cantidad: int = 1, monedas:
 				_suministros(usuario, null)
 
 
+func comentar(usuario: String, texto: String) -> void:
+	# Lo que un espectador escribe en el chat lo dice su personaje (si tiene uno vivo en la casa).
+	var s = _buscar_vivo(usuario)
+	if s == null or t - s.t_comentario < 1.0:
+		return
+	var limpio := _limpiar_comentario(texto)
+	if limpio.is_empty():
+		return
+	s.comentario = limpio
+	s.comentario_ttl = clampf(4.0 + limpio.length() * 0.09, 4.0, 11.0)
+	s.t_comentario = t
+
+
+func _limpiar_comentario(texto: String) -> String:
+	var sin_enlaces := ""
+	for palabra in texto.split(" ", false):
+		var p := String(palabra).to_lower()
+		if p.begins_with("http") or p.begins_with("www.") or "://" in p:
+			continue
+		sin_enlaces += String(palabra) + " "
+	var out := ""
+	for c in sin_enlaces.strip_edges():
+		var code := String(c).unicode_at(0)
+		if code >= 32 and code < 0x250 and code != 127:   # latin: sin emojis ni simbolos que la fuente no dibuja
+			out += String(c)
+	while "  " in out:
+		out = out.replace("  ", " ")
+	out = out.strip_edges()
+	if out.length() > COMENTARIO_MAX:
+		out = out.substr(0, COMENTARIO_MAX - 1).strip_edges() + "…"
+	return out
+
+
 func _buscar_vivo(usuario: String) -> Variant:
 	for s in supervivientes:
 		if s.hp > 0.0 and String(s.nombre).to_lower() == usuario.strip_edges().to_lower():
@@ -288,7 +322,7 @@ func _nuevo_superviviente(nombre: String) -> Dictionary:
 		"cama_id": -1, "modelo_arma": modelo, "nivel_arma": 1, "arma": modelo,
 		"cartuchos": ARMAS[modelo].cargador, "recarga": 0.0, "retroceso": 0.0,
 		"tiempo_tiro": 10.0, "tiros": 0, "apunta_x": CASA_X1 + 150.0, "apunta_y": PUERTA_Y, "apunta_z": 1.0, "puesto": -1, "aportes": 0, "kills": 0, "dir": 1, "camina": false, "anim": rng.randf() * 10.0,
-		"dice": "", "dice_ttl": 0.0, "golpe": 0.0, "carga": {},
+		"dice": "", "dice_ttl": 0.0, "golpe": 0.0, "carga": {}, "comentario": "", "comentario_ttl": 0.0, "t_comentario": -99.0,
 		"val": rng.randf_range(0.8, 1.3), "tr": rng.randf_range(0.8, 1.3), "glot": rng.randf_range(0.8, 1.3),
 		"camisa": h % 8, "look": (h / 8) % 3,
 	}
@@ -453,6 +487,7 @@ func _vida(s: Dictionary, dt: float) -> void:
 	s.flash -= dt
 	s.golpe = maxf(0.0, s.golpe - dt)
 	s.dice_ttl -= dt
+	s.comentario_ttl -= dt
 	s.anim += dt * (7.0 if s.camina else 1.0)
 	s.cd_dec -= dt
 	if s.cd_dec <= 0.0 or s.accion == "":

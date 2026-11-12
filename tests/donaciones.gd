@@ -42,5 +42,21 @@ func _init() -> void:
 	for i in range(100):
 		s2.step(0.1)
 	comprobar(s2.zombis.size() + s2.kills >= 10, "Los zombis de los likes no aparecen")
+	# Comentarios del chat: los dice su personaje, limpios y con tiempo propio.
+	var c := Sim.new(43)
+	c.aplicar_regalo("Juanito", "GG")
+	c.comentar("juanito", "Hola chat 😀 mira https://spam.com esto")
+	var j: Dictionary = c.supervivientes[0]
+	comprobar(j.comentario == "Hola chat mira esto" and j.comentario_ttl > 3.0, "No limpia emojis/enlaces: '%s'" % j.comentario)
+	c.comentar("juanito", "segundo")
+	comprobar(j.comentario == "Hola chat mira esto", "Permite comentar sin pausa")
+	c.t += 2.0
+	c.comentar("JUANITO ", "x".repeat(300))
+	comprobar(j.comentario.length() <= Sim.COMENTARIO_MAX, "No recorta comentarios largos")
+	c.comentar("desconocido", "hola")
+	comprobar(c.vivos() == 1, "Un comentario crea personajes")
+	for i in range(120):
+		c.step(0.1)
+	comprobar(j.comentario_ttl < 0.0, "El comentario no caduca")
 	print("Donaciones: likes, monedas x5, GG y tope de cola: ", "OK" if fallos == 0 else "FALLO")
 	quit(0 if fallos == 0 else 1)

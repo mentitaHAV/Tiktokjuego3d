@@ -86,6 +86,10 @@ sin relevo en una emergencia (hambre extrema o agotamiento). Regresion: `tests/v
 - Los zombis salen escalonados (mas deprisa cuanto mas grande es la oleada) y la cola tiene tope de 600 para que
   un diluvio de likes no congele el directo. Los multiplicadores estan en `scripts/sim.gd`
   (`ZOMBIS_POR_LIKE`, `ZOMBIS_POR_MONEDA`, `MAX_COLA`). Pruebas manuales con teclas: L = 10 likes, M = 30 monedas.
+- **Comentarios del chat:** lo que un espectador escribe lo dice **su personaje** en un globo siempre visible
+  (varias lineas, hasta 80 caracteres, 4-11 s segun la longitud). Solo habla quien ya tiene personaje vivo en la casa;
+  se quitan enlaces, emojis y simbolos que la fuente no dibuja, y hay una pausa de 1 s por espectador.
+  Linea de evento: `{"usuario":"ana","comentario":"hola a todos"}`. Tecla C: comentario de prueba.
 - Regresion: `tests/donaciones.gd`.
 
 ## Ejecutar
